@@ -48,18 +48,7 @@
   onAuthStateChanged(auth, async (user) => {
     document.getElementById('auth-loading').style.display = 'none';
     if (user) {
-      try {
-        await onLoginSuccess(user);
-      } catch (err) {
-        // Mostra o erro na tela de login em vez de falhar silenciosamente
-        // (antes isso virava uma "promise rejeitada" sem feedback nenhum
-        // pro usuário, deixando a tela em branco ou travada).
-        document.getElementById('login-screen').style.display = 'flex';
-        document.getElementById('app').style.display = 'none';
-        const errEl = document.getElementById('login-error');
-        if (errEl) { errEl.textContent = 'Erro ao carregar sessão: ' + err.message; errEl.style.display = 'block'; }
-        console.error('Erro em onAuthStateChanged → onLoginSuccess:', err);
-      }
+      await onLoginSuccess(user);
     } else {
       document.getElementById('login-screen').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
@@ -1609,15 +1598,6 @@ let _currentUser = null; // { uid, email, role: 'admin'|'dentista', nome, cro, c
 function isAdmin()    { return !_currentUser || _currentUser.role === 'admin'; }
 function isDentista() { return _currentUser?.role === 'dentista'; }
 function getCurrentDentistaNome() { return _currentUser?.nome || ''; }
-
-// ═══ Etapa 2 — Filtros por dentista ═══
-// Admin vê todas as consultas; dentista vê só as que estão com o próprio
-// nome no campo "profissional". Usado na Agenda e no Histórico do paciente.
-function filtrarConsultasPorRole(lista) {
-  if (!isDentista()) return lista;
-  const nome = getCurrentDentistaNome();
-  return lista.filter(c => c.profissional === nome);
-}
 const _store = {}; // cache em memória: { colecao: { id: dados } }
 
 // Referência de documento no Firestore
@@ -1743,32 +1723,13 @@ function fmtMoney(n) {
 // AUTH — Firebase Authentication
 // ════════════════════════════════════════
 
-// Consulta a coleção membros com resiliência a um problema conhecido do
-// Firebase: logo após o login, o token de autenticação às vezes ainda não
-// está totalmente "anexado" na primeira consulta ao Firestore, mesmo com o
-// login já confirmado — o que gera um erro passageiro de permissão. Por
-// isso: (1) força a renovação do token antes de consultar, e (2) se ainda
-// assim vier negado, tenta de novo uma vez após uma pequena espera.
-async function getMembrosSnapComRetry(user, tentativa = 1) {
-  const { db, collection, getDocs, query, where } = window._FB;
-  try {
-    await user.getIdToken(tentativa > 1); // força renovação a partir da 2ª tentativa
-    return await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
-  } catch (err) {
-    if (err.code === 'permission-denied' && tentativa < 3) {
-      await new Promise(r => setTimeout(r, 600 * tentativa));
-      return getMembrosSnapComRetry(user, tentativa + 1);
-    }
-    throw err;
-  }
-}
-
 // Mostra o app após login bem-sucedido
 async function onLoginSuccess(user) {
   showAppLoading(true);
   try {
     // Verifica se é um dentista vinculado a uma clínica
-    const membrosSnap = await getMembrosSnapComRetry(user);
+    const { db, collection, getDocs, query, where } = window._FB;
+    const membrosSnap = await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
 
     if (!membrosSnap.empty) {
       // É um dentista vinculado
@@ -1842,15 +1803,8 @@ async function doLogin() {
 
   try {
     const { auth, signInWithEmailAndPassword } = window._FB;
-    // Etapa 2 — correção de bug: não chamamos onLoginSuccess aqui.
-    // O listener onAuthStateChanged (abaixo, no bloco de inicialização do
-    // Firebase) já dispara onLoginSuccess sozinho assim que o login é
-    // reconhecido. Chamar duas vezes (aqui + no listener) fazia duas consultas
-    // simultâneas ao Firestore logo após o login, e uma delas por vezes
-    // perdia a corrida contra o token de autenticação ainda não estar
-    // totalmente propagado, retornando "Missing or insufficient permissions"
-    // e fazendo o sistema cair no fallback de admin por engano.
-    await signInWithEmailAndPassword(auth, email, pass);
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    await onLoginSuccess(cred.user);
   } catch (err) {
     const msgs = {
       'auth/wrong-password':      'Senha incorreta.',
@@ -2245,7 +2199,7 @@ function renderAgenda() {
 }
 
 function renderListView() {
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []));
+  const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
   const dayC = consultas.filter(c => c.data === agendaDate);
@@ -2284,7 +2238,7 @@ function renderListView() {
 }
 
 function renderWeekView() {
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []));
+  const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
   const today = new Date().toISOString().split('T')[0];
@@ -2354,11 +2308,6 @@ function openModalAgendar(hora, date) {
 function openEditConsulta(id) {
   const c = DB.get('consultas', []).find(c => String(c.id) === String(id));
   if (!c) return;
-  // Etapa 2: dentista só pode abrir as próprias consultas
-  if (isDentista() && c.profissional !== getCurrentDentistaNome()) {
-    alert('Você só pode visualizar as suas próprias consultas.');
-    return;
-  }
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(c.paciente_id));
   document.getElementById('c-id').value = c.id;
   document.getElementById('c-paciente-search').value = p?.nome || '';
@@ -3944,9 +3893,7 @@ function saveConsulta() {
   if (!pacId || !data || !hora) { showModalError('Preencha paciente, data e horário.'); return; }
 
   const status = document.getElementById('c-status').value;
-  // Etapa 2: se é um dentista logado, o profissional é sempre ele mesmo —
-  // ignora o valor do select (que já vem travado, mas isso é defesa extra)
-  const profissional = isDentista() ? getCurrentDentistaNome() : document.getElementById('c-profissional').value.trim();
+  const profissional = document.getElementById('c-profissional').value.trim();
   const procs = [];
   document.querySelectorAll('#c-procs-list > div').forEach(row => {
     const sel = row.querySelector('select');
@@ -4113,7 +4060,7 @@ function renderPacientes() {
 function viewPerfil(id) {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(id));
   if (!p) return;
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []).filter(c => String(c.paciente_id) === String(id))).sort((a,b) => b.data.localeCompare(a.data));
+  const consultas = DB.get('consultas', []).filter(c => String(c.paciente_id) === String(id)).sort((a,b) => b.data.localeCompare(a.data));
   const alertas = DB.get('alertas', []).filter(a => String(a.paciente_id) === String(id));
   const procs = DB.get('procedimentos', []);
   const today = new Date().toISOString().split('T')[0];
@@ -4611,22 +4558,12 @@ function renderProfList() {
 }
 
 // Popula o select de profissional no modal de consulta
-// Etapa 2: quando é um dentista logado, o campo é preenchido automaticamente
-// com o próprio nome e fica travado (não pode agendar em nome de outro).
 function populateProfConsulta(valorAtual) {
   const sel = document.getElementById('c-profissional');
   if (!sel) return;
   const lista = getProfissionaisList();
-  if (isDentista()) {
-    const nome = getCurrentDentistaNome();
-    // Garante que o dentista logado apareça como opção mesmo que ainda não
-    // tenha sido cadastrado na lista de "Profissionais da Clínica"
-    if (nome && !lista.some(p => p.nome === nome)) lista.unshift({ nome, cro: _currentUser.cro || '' });
-    valorAtual = nome;
-  }
   sel.innerHTML = '<option value="">— Selecionar profissional —</option>'
     + lista.map(p => `<option value="${p.nome}" ${p.nome === valorAtual ? 'selected' : ''}>${p.nome}${p.cro ? ' · CRO: ' + p.cro : ''}</option>`).join('');
-  sel.disabled = isDentista();
 }
 
 function addProfissional() {
