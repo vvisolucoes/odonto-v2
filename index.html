@@ -923,7 +923,8 @@
       <div class="nav-item" onclick="navigate('agenda')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></span>Agenda</div>
       <div class="nav-item" onclick="navigate('pacientes')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Pacientes</div>
       <div class="nav-item" id="nav-alertas" onclick="navigate('alertas')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>Alertas de Retorno<span class="nav-badge" id="badge-alertas">0</span></div>
-      <div class="nav-item" onclick="navigate('financeiro')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span id="nav-financeiro-label">Gestão Financeira</span></div>
+      <div class="nav-item" id="nav-item-financeiro" onclick="navigate('financeiro')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span id="nav-financeiro-label">Gestão Financeira</span></div>
+      <div class="nav-item" id="nav-item-producao" style="display:none" onclick="navigate('producao')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Minha Produção</div>
       <div class="nav-item" onclick="navigate('config')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>Configurações</div>
     </nav>
     <div class="sidebar-footer">
@@ -1074,7 +1075,7 @@
         <div class="page-title">Financeiro</div>
         <div class="page-sub">Controle de receitas e pagamentos</div>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
+      <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap">
         <select id="fin-filtro" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
           <option value="dia">Hoje</option>
           <option value="mes">Este mês</option>
@@ -1086,8 +1087,11 @@
           <option value="pago">Pagos</option>
           <option value="pendente">Pendentes</option>
         </select>
+        <select id="fin-profissional" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+          <option value="todos">Todos os profissionais</option>
+        </select>
       </div>
-      <div class="fin-stats">
+      <div class="fin-stats" style="grid-template-columns:repeat(4,1fr)">
         <div class="fin-stat">
           <div class="fin-stat-label">Total Receita</div>
           <div class="fin-stat-value fin-blue" id="fin-total">R$ 0</div>
@@ -1100,11 +1104,55 @@
           <div class="fin-stat-label">Pendente</div>
           <div class="fin-stat-value fin-yellow" id="fin-pendente">R$ 0</div>
         </div>
+        <div class="fin-stat">
+          <div class="fin-stat-label">Repasses no período</div>
+          <div class="fin-stat-value" style="color:var(--indigo)" id="fin-repasse-total">R$ 0</div>
+        </div>
+      </div>
+      <div class="card" id="fin-resumo-dentistas-card" style="margin-bottom:16px;display:none">
+        <div class="card-title" style="margin-bottom:12px">Repasse por Dentista</div>
+        <div id="fin-resumo-dentistas"></div>
       </div>
       <div class="card">
         <table>
-          <thead><tr><th>Data</th><th>Paciente</th><th>Procedimentos</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Paciente</th><th>Profissional</th><th>Procedimentos</th><th>Valor</th><th>Repasse</th><th>Status</th><th></th></tr></thead>
           <tbody id="fin-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- MINHA PRODUÇÃO (dentista) -->
+    <div class="page" id="page-producao">
+      <div class="page-header">
+        <div class="page-title">Minha Produção</div>
+        <div class="page-sub">Seus atendimentos e repasse</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
+        <select id="prod-filtro" onchange="renderProducao()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+          <option value="dia">Hoje</option>
+          <option value="mes">Este mês</option>
+          <option value="semana">Esta semana</option>
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+      <div class="fin-stats">
+        <div class="fin-stat">
+          <div class="fin-stat-label">Total Produzido</div>
+          <div class="fin-stat-value fin-blue" id="prod-total">R$ 0</div>
+        </div>
+        <div class="fin-stat">
+          <div class="fin-stat-label">Meu Repasse</div>
+          <div class="fin-stat-value" style="color:var(--indigo)" id="prod-repasse">R$ 0</div>
+        </div>
+        <div class="fin-stat">
+          <div class="fin-stat-label">Atendimentos</div>
+          <div class="fin-stat-value" id="prod-qtd">0</div>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Data</th><th>Paciente</th><th>Procedimentos</th><th>Valor</th><th>Meu Repasse</th><th>Status</th></tr></thead>
+          <tbody id="prod-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -1175,6 +1223,45 @@
               <input type="text" id="new-proc-name" placeholder="Novo procedimento" style="flex:1;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
               <input type="number" id="new-proc-days" placeholder="Dias" style="width:70px;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none;text-align:center">
               <button class="btn btn-teal" onclick="addProcedimento()">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="config-section">
+            <div class="config-section-title">Configuração de Repasses</div>
+            <div style="font-size:11.5px;color:var(--tx-4);margin-bottom:16px">Define quanto cada dentista recebe por atendimento. Quando mais de uma regra se aplica, vale a mais específica: exceção &gt; % do dentista &gt; % do procedimento.</div>
+
+            <div style="margin-bottom:18px">
+              <div style="font-size:12px;font-weight:600;color:var(--tx-3);margin-bottom:8px">% padrão por procedimento</div>
+              <div id="repasse-proc-list"></div>
+            </div>
+
+            <div style="margin-bottom:18px">
+              <div style="font-size:12px;font-weight:600;color:var(--tx-3);margin-bottom:8px">% padrão por dentista</div>
+              <div id="repasse-dentista-list"></div>
+            </div>
+
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--tx-3);margin-bottom:8px">Exceções específicas (dentista + procedimento)</div>
+              <div id="repasse-excecoes-list" style="margin-bottom:10px"></div>
+              <div style="background:var(--bg);border-radius:var(--r);padding:14px;border:1px solid var(--border)">
+                <div class="field-row" style="margin-bottom:10px">
+                  <div class="field" style="margin-bottom:0">
+                    <label>Dentista</label>
+                    <select id="rx-dentista" style="width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none"></select>
+                  </div>
+                  <div class="field" style="margin-bottom:0">
+                    <label>Procedimento</label>
+                    <select id="rx-proc" style="width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none"></select>
+                  </div>
+                  <div class="field" style="margin-bottom:0;max-width:80px">
+                    <label>%</label>
+                    <input type="number" id="rx-pct" min="0" max="100" step="0.1" style="width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none;text-align:center">
+                  </div>
+                </div>
+                <button class="btn btn-teal btn-sm" onclick="addExcecaoRepasse()">+ Adicionar Exceção</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1726,7 +1813,7 @@ async function migrarDadosFinanceirosLegados() {
     await Promise.all(lote.map(async c => {
       try {
         await setDoc(_docRef('financeiro', c.id), {
-          consulta_id: c.id, paciente_id: c.paciente_id, profissional: c.profissional || '',
+          consulta_id: c.id, paciente_id: c.paciente_id, profissional: c.profissional || '', profissional_uid: resolverUidProfissional(c.profissional),
           data: c.data, valor: c.valor || 0, pago: !!c.pago,
         });
         await updateDoc(doc(db, 'clinicas', _clinicaId, 'consultas', c.id), { valor: deleteField(), pago: deleteField() });
@@ -1944,28 +2031,29 @@ function navigate(page) {
     alert('Acesso restrito ao administrador da clínica.');
     return;
   }
+  if (page === 'producao' && !isDentista()) {
+    alert('Esta página é exclusiva para dentistas.');
+    return;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.textContent.includes(navLabel(page))) n.classList.add('active');
+    if ((n.getAttribute('onclick') || '').includes(`navigate('${page}')`)) n.classList.add('active');
   });
   if (page === 'dashboard') renderDashboard();
   if (page === 'agenda') renderAgenda();
   if (page === 'pacientes') renderPacientes();
   if (page === 'alertas') renderAlertas();
   if (page === 'financeiro') renderFinanceiro();
+  if (page === 'producao') renderProducao();
   if (page === 'config') {
-    loadConfig(); renderProcList();
+    loadConfig(); renderProcList(); renderRepasseConfig();
     if (isAdmin()) renderDentistasList();
     const dentSection = document.getElementById('config-dentistas-section');
     if (dentSection) dentSection.style.display = isAdmin() ? 'block' : 'none';
   }
   if (window.innerWidth < 768) toggleMobile();
-}
-
-function navLabel(p) {
-  return { dashboard:'Dashboard', agenda:'Agenda', pacientes:'Pacientes', alertas:'Alertas', financeiro:'Financeiro', config:'Configurações' }[p] || '';
 }
 
 function toggleMobile() {
@@ -3273,9 +3361,18 @@ function getProfissionaisList() {
   if (cfg.nome_dentista) lista.push({ nome: cfg.nome_dentista, cro: cfg.cro || '' });
   // Profissionais cadastrados (evita duplicar o principal)
   cadastrados.forEach(p => {
-    if (!lista.some(l => l.nome === p.nome)) lista.push({ nome: p.nome, cro: p.cro || '' });
+    if (!lista.some(l => l.nome === p.nome)) lista.push({ nome: p.nome, cro: p.cro || '', uid: p.id });
   });
   return lista;
+}
+
+// Resolve o uid do dentista a partir do nome selecionado no campo
+// "profissional" — usado para marcar quem é "dono" de um lançamento
+// financeiro, permitindo que o próprio dentista leia sua produção sem
+// precisar de acesso à coleção financeiro inteira.
+function resolverUidProfissional(nome) {
+  const p = getProfissionaisList().find(p => p.nome === nome);
+  return p?.uid || null;
 }
 
 function populateProfDropdown(selectId) {
@@ -3633,24 +3730,21 @@ function gerarReceituarioPDF() {
 
 function aplicarPermissoes() {
   const dentista = isDentista();
-  // Esconde Financeiro e Configurações para dentistas.
-  // Antes comparava pelo texto visível ("Financeiro"), mas o rótulo no HTML
-  // já é "Gestão Financeira" — e "Financeira" não contém a substring
-  // "Financeiro" (o final da palavra muda), então a checagem nunca batia e
-  // o item nunca era escondido. Agora identifica o item pelo próprio
-  // atributo onclick, que é estável independente do texto exibido.
+  // Configurações continua só pro admin. O item de Financeiro agora troca
+  // de identidade conforme o perfil: admin vê "Gestão Financeira" (dados
+  // da clínica inteira), dentista vê "Minha Produção" (só o dele) — são
+  // dois itens de menu diferentes no HTML, cada um mostrado só pro perfil
+  // certo, em vez de esconder um e não ter substituto.
   document.querySelectorAll('.nav-item').forEach(el => {
     const onclick = el.getAttribute('onclick') || '';
-    const restrito = onclick.includes("navigate('financeiro')") || onclick.includes("navigate('config')");
-    if (dentista && restrito) {
-      el.style.display = 'none';
-    } else {
-      el.style.display = '';
+    if (onclick.includes("navigate('config')")) {
+      el.style.display = dentista ? 'none' : '';
     }
   });
-  // Garante o rótulo certo para cada perfil (usa o id do elemento, não texto)
-  const labelEl = document.getElementById('nav-financeiro-label');
-  if (labelEl) labelEl.textContent = dentista ? 'Financeiro' : 'Gestão Financeira';
+  const navFinanceiro = document.getElementById('nav-item-financeiro');
+  const navProducao = document.getElementById('nav-item-producao');
+  if (navFinanceiro) navFinanceiro.style.display = dentista ? 'none' : '';
+  if (navProducao) navProducao.style.display = dentista ? '' : 'none';
 }
 
 function atualizarSidebarUsuario() {
@@ -4181,7 +4275,7 @@ function saveConsulta() {
     const valorInput = document.getElementById('c-valor');
     const valor = valorInput ? (parseFloat(valorInput.value) || 0) : (financeiroExistente?.valor || 0);
     const pago = financeiroExistente ? financeiroExistente.pago : false;
-    DB.setOne('financeiro', consulta.id, { consulta_id: consulta.id, paciente_id: pacId, profissional, data, valor, pago });
+    DB.setOne('financeiro', consulta.id, { consulta_id: consulta.id, paciente_id: pacId, profissional, profissional_uid: resolverUidProfissional(profissional), data, valor, pago });
     consulta.valor = valor;
     consulta.pago = pago;
   } else if (financeiroExistente) {
@@ -4686,8 +4780,17 @@ function renderFinanceiro() {
     sel.value = 'mes';
   }
 
+  // Popula o filtro de profissional
+  const selProf = document.getElementById('fin-profissional');
+  const profAtual = selProf.value;
+  const profissionais = getProfissionaisList();
+  selProf.innerHTML = '<option value="todos">Todos os profissionais</option>' +
+    profissionais.map(p => `<option value="${p.nome}">${p.nome}</option>`).join('');
+  if ([...selProf.options].some(o => o.value === profAtual)) selProf.value = profAtual;
+
   const filtro = sel.value;
   const statusFiltro = document.getElementById('fin-status').value;
+  const profFiltro = selProf.value;
 
   let filtered = consultas.filter(c => COMPLETED_STATUSES.includes(c.status));
 
@@ -4704,19 +4807,45 @@ function renderFinanceiro() {
 
   if (statusFiltro === 'pago') filtered = filtered.filter(c => c.pago);
   if (statusFiltro === 'pendente') filtered = filtered.filter(c => !c.pago);
+  if (profFiltro !== 'todos') filtered = filtered.filter(c => c.profissional === profFiltro);
   filtered.sort((a,b) => b.data.localeCompare(a.data));
 
   const total = filtered.reduce((s,c) => s + (Number(c.valor)||0), 0);
   const pago = filtered.filter(c => c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
   const pendente = filtered.filter(c => !c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
+  const repasseTotal = filtered.reduce((s,c) => s + calcularRepasseConsulta(c), 0);
 
   document.getElementById('fin-total').textContent = fmtMoney(total);
   document.getElementById('fin-pago').textContent = fmtMoney(pago);
   document.getElementById('fin-pendente').textContent = fmtMoney(pendente);
+  document.getElementById('fin-repasse-total').textContent = fmtMoney(repasseTotal);
+
+  // Resumo de repasse por dentista (só aparece com mais de um profissional
+  // representado no período filtrado, pra não poluir a tela à toa)
+  const porDentista = {};
+  filtered.forEach(c => {
+    const nome = c.profissional || 'Sem profissional definido';
+    porDentista[nome] = (porDentista[nome] || 0) + calcularRepasseConsulta(c);
+  });
+  const resumoCard = document.getElementById('fin-resumo-dentistas-card');
+  const nomesComRepasse = Object.keys(porDentista);
+  if (nomesComRepasse.length > 0) {
+    resumoCard.style.display = '';
+    document.getElementById('fin-resumo-dentistas').innerHTML = nomesComRepasse
+      .sort((a,b) => porDentista[b] - porDentista[a])
+      .map(nome => `
+        <div class="proc-row" style="align-items:center">
+          <div style="flex:1;font-size:13px;font-weight:600">${nome}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--indigo)">${fmtMoney(porDentista[nome])}</div>
+        </div>
+      `).join('');
+  } else {
+    resumoCard.style.display = 'none';
+  }
 
   const tbody = document.getElementById('fin-tbody');
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon" style="color:var(--tx-4)"><svg style="width:36px;height:36px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="empty-text">Nenhum registro no período</div></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon" style="color:var(--tx-4)"><svg style="width:36px;height:36px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="empty-text">Nenhum registro no período</div></div></td></tr>`;
     return;
   }
 
@@ -4726,8 +4855,10 @@ function renderFinanceiro() {
     return `<tr>
       <td>${fmtDate(c.data)}</td>
       <td style="font-weight:600">${p?.nome||'?'}</td>
+      <td style="font-size:12px;color:var(--tx-4)">${c.profissional||'–'}</td>
       <td style="font-size:12px;color:var(--tx-4)">${procNomes||'–'}</td>
       <td style="font-weight:700">${fmtMoney(c.valor)}</td>
+      <td style="color:var(--indigo);font-weight:600">${fmtMoney(calcularRepasseConsulta(c))}</td>
       <td>${c.pago ? '<span class="badge badge-green">✓ Pago</span>' : '<span class="badge badge-yellow">Pendente</span>'}</td>
       <td>${c.pago ? '' : `<button class="btn btn-ghost btn-sm" onclick="marcarPago('${c.id}')">Marcar Pago</button>`}</td>
     </tr>`;
@@ -4740,7 +4871,7 @@ function marcarPago(id) {
   if (idx === -1) return;
   consultas[idx].pago = true; // reflete na tela imediatamente
   const fin = DB.get('financeiro', []).find(f => String(f.id) === String(id));
-  DB.setOne('financeiro', id, { consulta_id: id, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
+  DB.setOne('financeiro', id, { consulta_id: id, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, profissional_uid: resolverUidProfissional(consultas[idx].profissional), data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
   renderFinanceiro();
 }
 
@@ -4751,8 +4882,59 @@ function marcarPagoEAtualizar(consultaId, pacienteId) {
   if (idx === -1) return;
   consultas[idx].pago = true;
   const fin = DB.get('financeiro', []).find(f => String(f.id) === String(consultaId));
-  DB.setOne('financeiro', consultaId, { consulta_id: consultaId, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
+  DB.setOne('financeiro', consultaId, { consulta_id: consultaId, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, profissional_uid: resolverUidProfissional(consultas[idx].profissional), data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
   viewPerfil(pacienteId);
+}
+
+// ════════════════════════════════════════
+// MINHA PRODUÇÃO (dentista)
+// Mostra só os atendimentos do próprio dentista logado — nunca dados de
+// outros profissionais ou da clínica como um todo. Sem botão de marcar
+// pago: quem confirma pagamento é sempre o admin, em Gestão Financeira.
+// ════════════════════════════════════════
+function renderProducao() {
+  if (!isDentista()) return;
+  const today = new Date().toISOString().split('T')[0];
+  const mesAtual = today.slice(0, 7);
+  const nome = getCurrentDentistaNome();
+  const pacientes = DB.get('pacientes', []);
+  const procs = DB.get('procedimentos', []);
+
+  const minhas = DB.get('consultas', [])
+    .filter(c => COMPLETED_STATUSES.includes(c.status) && c.profissional === nome);
+
+  const filtro = document.getElementById('prod-filtro').value;
+  let filtered = minhas;
+  if (filtro === 'dia') filtered = filtered.filter(c => c.data === today);
+  else if (filtro === 'mes') filtered = filtered.filter(c => c.data.slice(0,7) === mesAtual);
+  else if (filtro === 'semana') filtered = filtered.filter(c => c.data >= addDays(today, -7));
+  filtered.sort((a,b) => b.data.localeCompare(a.data));
+
+  const total = filtered.reduce((s,c) => s + (Number(c.valor)||0), 0);
+  const repasse = filtered.reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+
+  document.getElementById('prod-total').textContent = fmtMoney(total);
+  document.getElementById('prod-repasse').textContent = fmtMoney(repasse);
+  document.getElementById('prod-qtd').textContent = filtered.length;
+
+  const tbody = document.getElementById('prod-tbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon" style="color:var(--tx-4)"><svg style="width:36px;height:36px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="empty-text">Nenhum atendimento no período</div></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => {
+    const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
+    const procNomes = (c.procs||[]).map(pr => procs.find(p=>p.id===pr.proc_id)?.nome||'').filter(Boolean).join(', ');
+    return `<tr>
+      <td>${fmtDate(c.data)}</td>
+      <td style="font-weight:600">${p?.nome||'?'}</td>
+      <td style="font-size:12px;color:var(--tx-4)">${procNomes||'–'}</td>
+      <td style="font-weight:700">${fmtMoney(c.valor)}</td>
+      <td style="color:var(--indigo);font-weight:600">${fmtMoney(calcularRepasseConsulta(c))}</td>
+      <td>${c.pago ? '<span class="badge badge-green">✓ Pago</span>' : '<span class="badge badge-yellow">Pendente</span>'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════
@@ -4846,6 +5028,159 @@ function addProcedimento() {
   document.getElementById('new-proc-name').value = '';
   document.getElementById('new-proc-days').value = '';
   renderProcList();
+}
+
+// ════════════════════════════════════════
+// REPASSES — configuração e cálculo
+// Prioridade quando mais de uma regra se aplica ao mesmo atendimento:
+//   1. Exceção específica (dentista + procedimento)
+//   2. % padrão do dentista (vale pra qualquer procedimento dele)
+//   3. % padrão do procedimento (vale pra qualquer dentista)
+//   4. Nada configurado → 0%
+// ════════════════════════════════════════
+
+function getRepasseConfig() {
+  return DB.get('repasses_config', {});
+}
+
+function salvarRepasseConfig(cfg) {
+  DB.set('repasses_config', cfg);
+}
+
+// Retorna o % de repasse aplicável para um dentista + procedimento
+// específico, já resolvendo a prioridade acima.
+function calcularPercentualRepasse(profissionalNome, procId) {
+  const cfg = getRepasseConfig();
+  const excecoes = cfg.excecoes || {};
+  if (procId != null) {
+    const key = profissionalNome + '|' + procId;
+    if (excecoes[key] !== undefined) return excecoes[key];
+  }
+  const porDentista = cfg.porDentista || {};
+  if (porDentista[profissionalNome] !== undefined) return porDentista[profissionalNome];
+  if (procId != null) {
+    const porProcedimento = cfg.porProcedimento || {};
+    if (porProcedimento[procId] !== undefined) return porProcedimento[procId];
+  }
+  return 0;
+}
+
+// Calcula o valor de repasse de uma consulta inteira. Se ela tem vários
+// procedimentos com % diferentes entre si, divide o valor igualmente
+// entre eles (o valor é lançado por consulta, não por procedimento) e
+// aplica o % correspondente a cada um.
+function calcularRepasseConsulta(consulta) {
+  const valor = Number(consulta.valor) || 0;
+  if (valor === 0) return 0;
+  const procsConsulta = consulta.procs || [];
+  if (procsConsulta.length === 0) {
+    const pct = calcularPercentualRepasse(consulta.profissional, null);
+    return valor * pct / 100;
+  }
+  const valorPorProc = valor / procsConsulta.length;
+  return procsConsulta.reduce((soma, pr) => {
+    const pct = calcularPercentualRepasse(consulta.profissional, pr.proc_id);
+    return soma + (valorPorProc * pct / 100);
+  }, 0);
+}
+
+function renderRepasseConfig() {
+  const cfg = getRepasseConfig();
+  const procedimentos = DB.get('procedimentos', []);
+  const profissionais = getProfissionaisList();
+
+  const elProc = document.getElementById('repasse-proc-list');
+  if (elProc) {
+    elProc.innerHTML = procedimentos.length === 0
+      ? '<div style="color:var(--tx-4);font-size:12px;padding:4px 0">Nenhum procedimento cadastrado.</div>'
+      : procedimentos.map(p => `
+        <div class="proc-row" style="align-items:center">
+          <div style="flex:1;font-size:13px">${p.nome}</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" min="0" max="100" step="0.1" value="${cfg.porProcedimento?.[p.id] ?? ''}" placeholder="0" style="width:70px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;text-align:right" onchange="updateRepassePorProcedimento('${p.id}', this.value)">
+            <span style="font-size:12px;color:var(--tx-4)">%</span>
+          </div>
+        </div>
+      `).join('');
+  }
+
+  const elDent = document.getElementById('repasse-dentista-list');
+  if (elDent) {
+    elDent.innerHTML = profissionais.length === 0
+      ? '<div style="color:var(--tx-4);font-size:12px;padding:4px 0">Nenhum dentista cadastrado.</div>'
+      : profissionais.map(p => `
+        <div class="proc-row" style="align-items:center">
+          <div style="flex:1;font-size:13px">${p.nome}</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" min="0" max="100" step="0.1" value="${cfg.porDentista?.[p.nome] ?? ''}" placeholder="0" style="width:70px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;text-align:right" onchange="updateRepassePorDentista('${encodeURIComponent(p.nome)}', this.value)">
+            <span style="font-size:12px;color:var(--tx-4)">%</span>
+          </div>
+        </div>
+      `).join('');
+  }
+
+  const elExc = document.getElementById('repasse-excecoes-list');
+  const excecoes = cfg.excecoes || {};
+  const chaves = Object.keys(excecoes);
+  if (elExc) {
+    elExc.innerHTML = chaves.length === 0
+      ? '<div style="color:var(--tx-4);font-size:12px;padding:4px 0">Nenhuma exceção cadastrada.</div>'
+      : chaves.map(k => {
+        const [nomeDentista, procId] = k.split('|');
+        const proc = procedimentos.find(p => String(p.id) === String(procId));
+        return `<div class="proc-row" style="align-items:center">
+          <div style="flex:1;font-size:12.5px">${nomeDentista} · ${proc?.nome || '?'}</div>
+          <div style="font-size:13px;font-weight:600;margin-right:8px">${excecoes[k]}%</div>
+          <button style="background:none;border:none;cursor:pointer;color:var(--tx-4)" onclick="removeExcecaoRepasse('${encodeURIComponent(k)}')">✕</button>
+        </div>`;
+      }).join('');
+  }
+
+  const selD = document.getElementById('rx-dentista');
+  const selP = document.getElementById('rx-proc');
+  if (selD) selD.innerHTML = profissionais.map(p => `<option value="${p.nome}">${p.nome}</option>`).join('');
+  if (selP) selP.innerHTML = procedimentos.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+}
+
+function updateRepassePorProcedimento(procId, valorStr) {
+  const cfg = getRepasseConfig();
+  cfg.porProcedimento = cfg.porProcedimento || {};
+  const pct = parseFloat(valorStr);
+  if (valorStr === '' || isNaN(pct)) delete cfg.porProcedimento[procId];
+  else cfg.porProcedimento[procId] = pct;
+  salvarRepasseConfig(cfg);
+}
+
+function updateRepassePorDentista(nomeCodificado, valorStr) {
+  const nome = decodeURIComponent(nomeCodificado);
+  const cfg = getRepasseConfig();
+  cfg.porDentista = cfg.porDentista || {};
+  const pct = parseFloat(valorStr);
+  if (valorStr === '' || isNaN(pct)) delete cfg.porDentista[nome];
+  else cfg.porDentista[nome] = pct;
+  salvarRepasseConfig(cfg);
+}
+
+function addExcecaoRepasse() {
+  const nome = document.getElementById('rx-dentista').value;
+  const procId = document.getElementById('rx-proc').value;
+  const pct = parseFloat(document.getElementById('rx-pct').value);
+  if (!nome || !procId) { alert('Selecione o dentista e o procedimento.'); return; }
+  if (isNaN(pct) || pct < 0 || pct > 100) { alert('Informe uma porcentagem válida (0 a 100).'); return; }
+  const cfg = getRepasseConfig();
+  cfg.excecoes = cfg.excecoes || {};
+  cfg.excecoes[nome + '|' + procId] = pct;
+  salvarRepasseConfig(cfg);
+  document.getElementById('rx-pct').value = '';
+  renderRepasseConfig();
+}
+
+function removeExcecaoRepasse(keyCodificada) {
+  const key = decodeURIComponent(keyCodificada);
+  const cfg = getRepasseConfig();
+  if (cfg.excecoes) delete cfg.excecoes[key];
+  salvarRepasseConfig(cfg);
+  renderRepasseConfig();
 }
 
 function exportJSON() {
