@@ -1610,14 +1610,6 @@ function isAdmin()    { return !_currentUser || _currentUser.role === 'admin'; }
 function isDentista() { return _currentUser?.role === 'dentista'; }
 function getCurrentDentistaNome() { return _currentUser?.nome || ''; }
 
-// ═══ Etapa 2 — Filtros por dentista ═══
-// Admin vê todas as consultas; dentista vê só as que estão com o próprio
-// nome no campo "profissional". Usado na Agenda e no Histórico do paciente.
-function filtrarConsultasPorRole(lista) {
-  if (!isDentista()) return lista;
-  const nome = getCurrentDentistaNome();
-  return lista.filter(c => c.profissional === nome);
-}
 const _store = {}; // cache em memória: { colecao: { id: dados } }
 
 // Referência de documento no Firestore
@@ -2251,7 +2243,11 @@ function renderAgenda() {
 }
 
 function renderListView() {
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []));
+  // A partir de agora a Agenda mostra as consultas de TODOS os dentistas
+  // (a clínica tem mais de uma sala, então cabe mais de uma consulta no
+  // mesmo horário). O filtro por dentista continua valendo só no Histórico
+  // de Consultas do perfil do paciente.
+  const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
   const dayC = consultas.filter(c => c.data === agendaDate);
@@ -2259,38 +2255,53 @@ function renderListView() {
   for (let h = 7; h <= 20; h++) { hours.push(`${String(h).padStart(2,'0')}:00`); if (h < 20) hours.push(`${String(h).padStart(2,'0')}:30`); }
   const el = document.getElementById('time-slots-list');
   el.innerHTML = hours.map(time => {
-    const c = dayC.find(c => c.hora === time);
-    if (c) {
-      const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
-      return `<div class="time-slot">
-        <div class="time-label">${time}</div>
-        <div class="slot-area slot-${c.status}" onclick="openEditConsulta('${c.id}')">
-          <div class="slot-name">${p?.nome || 'Paciente'}</div>
-          <div class="slot-proc">${c.obs || statusLabel(c.status)} · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}</div>
-        </div>
-      </div>`;
-    }
+    const cs = dayC.filter(c => c.hora === time);
     const b = getBloqueio(bloqueios, agendaDate, time);
-    if (b) {
+
+    const itens = cs.map(c => {
+      const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
+      const podeAbrir = !isDentista() || c.profissional === getCurrentDentistaNome();
+      const clickAttr = podeAbrir ? `onclick="openEditConsulta('${c.id}')"` : `onclick="alert('Você só pode visualizar as suas próprias consultas.')" style="cursor:not-allowed"`;
+      return `<div class="slot-area slot-${c.status}" ${clickAttr}>
+        <div class="slot-name">${p?.nome || 'Paciente'}${c.profissional ? ` <span style="font-weight:400;color:var(--tx-4)">· ${c.profissional}</span>` : ''}</div>
+        <div class="slot-proc">${c.obs || statusLabel(c.status)} · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}</div>
+      </div>`;
+    }).join('');
+
+    const blocoBloqueio = b ? `<div class="slot-area slot-bloqueado" onclick="openBloqueioDetail('${b.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="slot-name" style="color:var(--tx-4);font-style:italic;font-size:12px">${motivoBloqueioLabel(b)}</div>
+        <span style="font-size:10px;color:var(--tx-4)">Clique para remover</span>
+      </div>
+    </div>` : '';
+
+    // Sempre mostra um botão de "+ Agendar" (outra sala pode estar livre
+    // mesmo com uma consulta já marcada nesse horário), a menos que o
+    // horário esteja bloqueado.
+    const blocoAdicionar = !b ? `<div class="slot-area slot-empty" onclick="openModalAgendar('${time}')"><span style="font-size:11px;color:var(--tx-4)">+ Agendar</span></div>` : '';
+
+    if (!itens && !blocoBloqueio) {
       return `<div class="time-slot">
         <div class="time-label">${time}</div>
-        <div class="slot-area slot-bloqueado" onclick="openBloqueioDetail('${b.id}')">
-          <div style="display:flex;align-items:center;justify-content:space-between">
-            <div class="slot-name" style="color:var(--tx-4);font-style:italic;font-size:12px">${motivoBloqueioLabel(b)}</div>
-            <span style="font-size:10px;color:var(--tx-4)">Clique para remover</span>
-          </div>
-        </div>
+        ${blocoAdicionar}
       </div>`;
     }
+
     return `<div class="time-slot">
       <div class="time-label">${time}</div>
-      <div class="slot-area slot-empty" onclick="openModalAgendar('${time}')"><span style="font-size:11px;color:var(--tx-4)">+ Agendar</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        ${itens}
+        ${blocoBloqueio}
+        ${blocoAdicionar}
+      </div>
     </div>`;
   }).join('');
 }
 
 function renderWeekView() {
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []));
+  // Mesma lógica da visão de dia: mostra as consultas de todos os
+  // dentistas (a clínica tem mais de uma sala).
+  const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
   const today = new Date().toISOString().split('T')[0];
@@ -2318,16 +2329,25 @@ function renderWeekView() {
     return `<div class="cal-row${isHour ? ' cal-hour-row' : ''}">
       <div class="cal-tlabel">${isHour ? time : ''}</div>
       ${wDates.map(date => {
-        const c = consultas.find(c => c.data === date && c.hora === time);
+        const cs = consultas.filter(c => c.data === date && c.hora === time);
         const todayCls = date === today ? ' today-col' : '';
-        if (c) {
-          const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
-          const nome = (p?.nome || 'Paciente').split(' ')[0];
+        const b = getBloqueio(bloqueios, date, time);
+
+        if (cs.length > 0) {
+          const apts = cs.map(c => {
+            const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
+            const nome = (p?.nome || 'Paciente').split(' ')[0];
+            const dentistaPrimeiroNome = c.profissional ? c.profissional.split(' ')[0] : '';
+            const podeAbrir = !isDentista() || c.profissional === getCurrentDentistaNome();
+            const clickAttr = podeAbrir
+              ? `onclick="openEditConsulta('${c.id}');event.stopPropagation()"`
+              : `onclick="alert('Você só pode visualizar as suas próprias consultas.');event.stopPropagation()" style="cursor:not-allowed"`;
+            return `<div class="cal-appt cal-appt-${c.status}" ${clickAttr} title="${p?.nome||''}${c.profissional ? ' · ' + c.profissional : ''} · ${time}">${nome}${dentistaPrimeiroNome ? ' · ' + dentistaPrimeiroNome : ''}</div>`;
+          }).join('');
           return `<div class="cal-cell${todayCls}" onclick="openModalAgendar('${time}','${date}')">
-            <div class="cal-appt cal-appt-${c.status}" onclick="openEditConsulta('${c.id}');event.stopPropagation()" title="${p?.nome||''} · ${time}">${nome}</div>
+            ${apts}
           </div>`;
         }
-        const b = getBloqueio(bloqueios, date, time);
         if (b) {
           return `<div class="cal-cell${todayCls} cal-cell-blocked" onclick="openBloqueioDetail('${b.id}')" title="Bloqueado: ${motivoBloqueioLabel(b)}">
             <span class="cal-block-tag">${motivoBloqueioLabel(b)}</span>
@@ -3951,9 +3971,9 @@ function saveConsulta() {
   if (!pacId || !data || !hora) { showModalError('Preencha paciente, data e horário.'); return; }
 
   const status = document.getElementById('c-status').value;
-  // Etapa 2: se é um dentista logado, o profissional é sempre ele mesmo —
-  // ignora o valor do select (que já vem travado, mas isso é defesa extra)
-  const profissional = isDentista() ? getCurrentDentistaNome() : document.getElementById('c-profissional').value.trim();
+  // A clínica tem mais de uma sala: o campo profissional agora é livre para
+  // qualquer usuário (não é mais travado no nome de quem está logado).
+  const profissional = document.getElementById('c-profissional').value.trim();
   const procs = [];
   document.querySelectorAll('#c-procs-list > div').forEach(row => {
     const sel = row.querySelector('select');
@@ -3973,9 +3993,15 @@ function saveConsulta() {
   const bloqueio = getBloqueio(DB.get('bloqueios', []), data, hora);
   if (bloqueio) { showModalError(`Horário bloqueado (${motivoBloqueioLabel(bloqueio)}). Remova o bloqueio antes de agendar.`); return; }
 
-  // Conflito de horário: outro agendamento no mesmo dia/hora
-  const conflito = consultas.find(c => c.data === data && c.hora === hora && String(c.id) !== String(editId));
-  if (conflito) { showModalError('Já existe uma consulta agendada neste horário. Escolha outro horário.'); return; }
+  // Conflito de horário: agora a clínica tem mais de uma sala, então o que
+  // não pode acontecer é o MESMO profissional em dois lugares ao mesmo
+  // tempo — mas dois dentistas diferentes podem ter consultas no mesmo
+  // horário (salas diferentes).
+  const conflito = consultas.find(c =>
+    c.data === data && c.hora === hora && String(c.id) !== String(editId) &&
+    profissional && c.profissional === profissional
+  );
+  if (conflito) { showModalError(`${profissional} já tem uma consulta marcada nesse horário. Escolha outro horário ou profissional.`); return; }
 
   // TRAVA DE INTEGRIDADE: se existe uma assinatura pendente, o conteúdo que ela
   // cobre (procedimentos e data da consulta) não pode ter sido alterado depois de
@@ -4120,7 +4146,10 @@ function renderPacientes() {
 function viewPerfil(id) {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(id));
   if (!p) return;
-  const consultas = filtrarConsultasPorRole(DB.get('consultas', []).filter(c => String(c.paciente_id) === String(id))).sort((a,b) => b.data.localeCompare(a.data));
+  // Histórico completo, sem filtro por dentista: por continuidade clínica,
+  // se um paciente troca de profissional, quem assume precisa ver o
+  // histórico inteiro (alergias, procedimentos já feitos, materiais etc.).
+  const consultas = DB.get('consultas', []).filter(c => String(c.paciente_id) === String(id)).sort((a,b) => b.data.localeCompare(a.data));
   const alertas = DB.get('alertas', []).filter(a => String(a.paciente_id) === String(id));
   const procs = DB.get('procedimentos', []);
   const today = new Date().toISOString().split('T')[0];
@@ -4617,9 +4646,12 @@ function renderProfList() {
   `).join('');
 }
 
-// Popula o select de profissional no modal de consulta
-// Etapa 2: quando é um dentista logado, o campo é preenchido automaticamente
-// com o próprio nome e fica travado (não pode agendar em nome de outro).
+// Popula o select de profissional no modal de consulta.
+// Agora qualquer usuário (admin ou dentista) pode escolher qualquer
+// profissional — a clínica tem mais de uma sala, então um dentista pode
+// agendar em nome de outro. Para um dentista criando uma consulta nova
+// (valorAtual vazio), o próprio nome vem pré-selecionado por padrão, mas o
+// campo continua editável.
 function populateProfConsulta(valorAtual) {
   const sel = document.getElementById('c-profissional');
   if (!sel) return;
@@ -4629,11 +4661,11 @@ function populateProfConsulta(valorAtual) {
     // Garante que o dentista logado apareça como opção mesmo que ainda não
     // tenha sido cadastrado na lista de "Profissionais da Clínica"
     if (nome && !lista.some(p => p.nome === nome)) lista.unshift({ nome, cro: _currentUser.cro || '' });
-    valorAtual = nome;
+    if (!valorAtual) valorAtual = nome; // só pré-preenche se ainda não tinha um valor (consulta nova)
   }
   sel.innerHTML = '<option value="">— Selecionar profissional —</option>'
     + lista.map(p => `<option value="${p.nome}" ${p.nome === valorAtual ? 'selected' : ''}>${p.nome}${p.cro ? ' · CRO: ' + p.cro : ''}</option>`).join('');
-  sel.disabled = isDentista();
+  sel.disabled = false;
 }
 
 function addProfissional() {
