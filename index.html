@@ -3510,23 +3510,24 @@ function gerarReceituarioPDF() {
 
 function aplicarPermissoes() {
   const dentista = isDentista();
-  // Esconde Financeiro e Configurações para dentistas
+  // Esconde Financeiro e Configurações para dentistas.
+  // Antes comparava pelo texto visível ("Financeiro"), mas o rótulo no HTML
+  // já é "Gestão Financeira" — e "Financeira" não contém a substring
+  // "Financeiro" (o final da palavra muda), então a checagem nunca batia e
+  // o item nunca era escondido. Agora identifica o item pelo próprio
+  // atributo onclick, que é estável independente do texto exibido.
   document.querySelectorAll('.nav-item').forEach(el => {
-    const txt = el.textContent.trim();
-    if (dentista && (txt.includes('Financeiro') || txt.includes('Configurações'))) {
+    const onclick = el.getAttribute('onclick') || '';
+    const restrito = onclick.includes("navigate('financeiro')") || onclick.includes("navigate('config')");
+    if (dentista && restrito) {
       el.style.display = 'none';
     } else {
       el.style.display = '';
     }
   });
-  // Troca label do Financeiro para admin
-  if (!dentista) {
-    document.querySelectorAll('.nav-item').forEach(el => {
-      if (el.textContent.includes('Financeiro')) {
-        el.querySelector('span') && (el.querySelector('span').textContent = 'Gestão Financeira');
-      }
-    });
-  }
+  // Garante o rótulo certo para cada perfil (usa o id do elemento, não texto)
+  const labelEl = document.getElementById('nav-financeiro-label');
+  if (labelEl) labelEl.textContent = dentista ? 'Financeiro' : 'Gestão Financeira';
 }
 
 function atualizarSidebarUsuario() {
