@@ -48,7 +48,18 @@
   onAuthStateChanged(auth, async (user) => {
     document.getElementById('auth-loading').style.display = 'none';
     if (user) {
-      await onLoginSuccess(user);
+      try {
+        await onLoginSuccess(user);
+      } catch (err) {
+        // Mostra o erro na tela de login em vez de falhar silenciosamente
+        // (antes isso virava uma "promise rejeitada" sem feedback nenhum
+        // pro usuário, deixando a tela em branco ou travada).
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
+        const errEl = document.getElementById('login-error');
+        if (errEl) { errEl.textContent = 'Erro ao carregar sessão: ' + err.message; errEl.style.display = 'block'; }
+        console.error('Erro em onAuthStateChanged → onLoginSuccess:', err);
+      }
     } else {
       document.getElementById('login-screen').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
@@ -1812,8 +1823,15 @@ async function doLogin() {
 
   try {
     const { auth, signInWithEmailAndPassword } = window._FB;
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    await onLoginSuccess(cred.user);
+    // Etapa 2 — correção de bug: não chamamos onLoginSuccess aqui.
+    // O listener onAuthStateChanged (abaixo, no bloco de inicialização do
+    // Firebase) já dispara onLoginSuccess sozinho assim que o login é
+    // reconhecido. Chamar duas vezes (aqui + no listener) fazia duas consultas
+    // simultâneas ao Firestore logo após o login, e uma delas por vezes
+    // perdia a corrida contra o token de autenticação ainda não estar
+    // totalmente propagado, retornando "Missing or insufficient permissions"
+    // e fazendo o sistema cair no fallback de admin por engano.
+    await signInWithEmailAndPassword(auth, email, pass);
   } catch (err) {
     const msgs = {
       'auth/wrong-password':      'Senha incorreta.',
