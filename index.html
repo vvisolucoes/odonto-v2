@@ -1743,13 +1743,32 @@ function fmtMoney(n) {
 // AUTH — Firebase Authentication
 // ════════════════════════════════════════
 
+// Consulta a coleção membros com resiliência a um problema conhecido do
+// Firebase: logo após o login, o token de autenticação às vezes ainda não
+// está totalmente "anexado" na primeira consulta ao Firestore, mesmo com o
+// login já confirmado — o que gera um erro passageiro de permissão. Por
+// isso: (1) força a renovação do token antes de consultar, e (2) se ainda
+// assim vier negado, tenta de novo uma vez após uma pequena espera.
+async function getMembrosSnapComRetry(user, tentativa = 1) {
+  const { db, collection, getDocs, query, where } = window._FB;
+  try {
+    await user.getIdToken(tentativa > 1); // força renovação a partir da 2ª tentativa
+    return await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
+  } catch (err) {
+    if (err.code === 'permission-denied' && tentativa < 3) {
+      await new Promise(r => setTimeout(r, 600 * tentativa));
+      return getMembrosSnapComRetry(user, tentativa + 1);
+    }
+    throw err;
+  }
+}
+
 // Mostra o app após login bem-sucedido
 async function onLoginSuccess(user) {
   showAppLoading(true);
   try {
     // Verifica se é um dentista vinculado a uma clínica
-    const { db, collection, getDocs, query, where } = window._FB;
-    const membrosSnap = await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
+    const membrosSnap = await getMembrosSnapComRetry(user);
 
     if (!membrosSnap.empty) {
       // É um dentista vinculado
