@@ -14,7 +14,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword }
     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-  import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, Timestamp }
+  import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, query, where, orderBy, onSnapshot, Timestamp }
     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
   import { getStorage, ref, uploadString, getDownloadURL, deleteObject }
     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
@@ -38,7 +38,7 @@
   // Expõe globalmente para as funções do sistema usarem
   window._FB = { auth, db, storage,
     signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword,
-    collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, Timestamp,
+    collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, query, where, orderBy, onSnapshot, Timestamp,
     ref, uploadString, getDownloadURL, deleteObject,
   };
   window._FB_READY = true;
@@ -961,7 +961,7 @@
           <div class="stat-value" id="stat-retornos">0</div>
           <div class="stat-label">Retornos vencidos</div>
         </div>
-        <div class="stat-card" onclick="openStatDetail('receita')" title="Ver breakdown da receita">
+        <div class="stat-card" id="stat-card-receita" onclick="openStatDetail('receita')" title="Ver breakdown da receita">
           <div class="stat-icon-wrap" style="background:#FFFBEB;color:#D97706"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
           <div class="stat-value" id="stat-receita">R$ 0</div>
           <div class="stat-label">Receita do dia</div>
@@ -1264,8 +1264,9 @@
           <option value="remarcado">Remarcado</option>
         </select>
       </div>
-      <div class="field"><label>Valor (R$)</label><input type="number" id="c-valor" placeholder="0.00" min="0" step="0.01"></div>
+      <div class="field" id="c-valor-wrap"><label>Valor (R$)</label><input type="number" id="c-valor" placeholder="0.00" min="0" step="0.01"></div>
     </div>
+    <div id="c-valor-oculto-msg" style="display:none;font-size:12px;color:var(--tx-4);background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;margin-top:-8px;margin-bottom:14px">💰 O valor é definido pelo administrador da clínica.</div>
     <div class="field"><label>Observações</label><textarea id="c-obs" placeholder="Anotações sobre a consulta..."></textarea></div>
     <div id="c-proc-area" style="display:none;margin-top:4px">
       <div class="card-title" style="margin-bottom:10px">Procedimentos Realizados</div>
@@ -1673,12 +1674,56 @@ async function _fbDelete(colecao, id) {
 // Carrega todas as coleções do Firestore para o cache _store (rodado uma vez ao login)
 async function loadAllFromFirestore() {
   const { db, collection, getDocs } = window._FB;
-  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados'];
+  // "financeiro" e "repasses_config" são só do admin (regra do Firestore).
+  // Cada coleção carrega de forma independente — se uma falhar por
+  // permissão (caso do dentista tentando ler financeiro), as outras
+  // continuam normalmente, em vez de travar o login inteiro.
+  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados', 'financeiro', 'repasses_config'];
   await Promise.all(colecoes.map(async nome => {
-    const snap = await getDocs(collection(db, 'clinicas', _clinicaId, nome));
-    _store[nome] = {};
-    snap.docs.forEach(d => { _store[nome][d.id] = { id: d.id, ...d.data() }; });
+    try {
+      const snap = await getDocs(collection(db, 'clinicas', _clinicaId, nome));
+      _store[nome] = {};
+      snap.docs.forEach(d => { _store[nome][d.id] = { id: d.id, ...d.data() }; });
+    } catch (e) {
+      // Esperado para dentistas em "financeiro"/"repasses_config" (regra
+      // do Firestore nega). Deixa a coleção vazia e segue o carregamento
+      // normalmente, sem quebrar o resto do app.
+      _store[nome] = {};
+    }
   }));
+
+  // Mescla valor/pago do financeiro nas consultas — só na memória (nunca
+  // grava de volta em "consultas"). Para o dentista, "financeiro" carrega
+  // vazio, então esses campos simplesmente não existem nas consultas dele.
+  Object.values(_store['consultas'] || {}).forEach(c => {
+    const fin = _store['financeiro']?.[c.id];
+    if (fin) { c.valor = fin.valor; c.pago = fin.pago; }
+  });
+
+  await migrarDadosFinanceirosLegados();
+}
+
+// Migração única: consultas antigas ainda têm valor/pago gravados dentro
+// do próprio documento (de antes da separação). Copia esses dados pra
+// "financeiro" e limpa da consulta, pra não vazar mais pro dentista.
+async function migrarDadosFinanceirosLegados() {
+  if (!isAdmin()) return; // só o admin tem acesso de escrita/leitura pra migrar
+  const { db, doc, getDoc, setDoc, updateDoc, deleteField } = window._FB;
+  const consultas = Object.values(_store['consultas'] || {});
+  const pendentes = consultas.filter(c => c.valor !== undefined && !_store['financeiro']?.[c.id]);
+  if (pendentes.length === 0) return;
+
+  console.log(`[migração] Movendo dados financeiros de ${pendentes.length} consulta(s) antiga(s) para a coleção "financeiro"...`);
+  for (const c of pendentes) {
+    try {
+      await setDoc(_docRef('financeiro', c.id), {
+        consulta_id: c.id, paciente_id: c.paciente_id, profissional: c.profissional || '',
+        data: c.data, valor: c.valor || 0, pago: !!c.pago,
+      });
+      await updateDoc(doc(db, 'clinicas', _clinicaId, 'consultas', c.id), { valor: deleteField(), pago: deleteField() });
+      _store['financeiro'][c.id] = { id: c.id, valor: c.valor || 0, pago: !!c.pago };
+    } catch (e) { console.warn('[migração] Falha ao migrar consulta', c.id, e); }
+  }
 }
 
 // Gera ID único string (usado no lugar de inteiros sequenciais)
@@ -1937,6 +1982,8 @@ function renderDashboard() {
   document.getElementById('stat-retornos').textContent = vencidos;
   const receita = todayC.filter(c => COMPLETED_STATUSES.includes(c.status) && c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
   document.getElementById('stat-receita').textContent = fmtMoney(receita);
+  const cardReceita = document.getElementById('stat-card-receita');
+  if (cardReceita) cardReceita.style.display = isAdmin() ? '' : 'none';
 
   // Next consultas
   const proximas = todayC.filter(c => c.status === 'agendada').sort((a,b) => a.hora.localeCompare(b.hora)).slice(0, 5);
@@ -1992,6 +2039,7 @@ function renderDashboard() {
 // STAT CARD DETAIL MODAL
 // ════════════════════════════════════════
 function openStatDetail(type) {
+  if (type === 'receita' && !isAdmin()) return; // dado financeiro restrito ao admin
   const today = new Date().toISOString().split('T')[0];
   const consultas = DB.get('consultas', []);
   const alertas = DB.get('alertas', []);
@@ -2025,7 +2073,7 @@ function openStatDetail(type) {
     sub = lista.length === 0 ? 'Nenhuma consulta realizada hoje' : `${lista.length} consulta${lista.length !== 1 ? 's' : ''} realizada${lista.length !== 1 ? 's' : ''}`;
     html = lista.length === 0
       ? '<div class="empty-state"><div class="empty-icon" style="color:var(--tx-4)"><svg style="width:36px;height:36px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="empty-text">Nenhuma consulta realizada hoje</div></div>'
-      : `<table><thead><tr><th>Horário</th><th>Paciente</th><th>Procedimentos</th><th>Valor</th></tr></thead><tbody>${
+      : `<table><thead><tr><th>Horário</th><th>Paciente</th><th>Procedimentos</th>${isAdmin() ? '<th>Valor</th>' : ''}</tr></thead><tbody>${
           lista.map(c => {
             const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
             const procNomes = (c.procs||[]).map(pr => procs.find(p=>p.id===pr.proc_id)?.nome||'').filter(Boolean).join(', ') || '–';
@@ -2033,7 +2081,7 @@ function openStatDetail(type) {
               <td style="font-weight:600">${c.hora}</td>
               <td><span style="cursor:pointer;color:var(--indigo);font-weight:600" onclick="closeModal('modal-stat-detail');viewPerfil('${p?.id}')">${p?.nome||'?'}</span></td>
               <td style="font-size:12px;color:var(--tx-4)">${procNomes}</td>
-              <td style="font-weight:700">${fmtMoney(c.valor)}</td>
+              ${isAdmin() ? `<td style="font-weight:700">${fmtMoney(c.valor)}</td>` : ''}
             </tr>`;
           }).join('')
         }</tbody></table>`;
@@ -2303,7 +2351,7 @@ function renderListView() {
       const horaReal = c.hora !== time ? ` <span style="font-weight:400;color:var(--tx-4)">(${c.hora})</span>` : '';
       return `<div class="slot-area slot-${c.status}" ${clickAttr}>
         <div class="slot-name">${p?.nome || 'Paciente'}${horaReal}${c.profissional ? ` <span style="font-weight:400;color:var(--tx-4)">· ${c.profissional}</span>` : ''}</div>
-        <div class="slot-proc">${c.obs || statusLabel(c.status)} · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}</div>
+        <div class="slot-proc">${c.obs || statusLabel(c.status)}${isAdmin() ? ` · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}` : ''}</div>
       </div>`;
     }).join('');
 
@@ -2431,7 +2479,7 @@ function openEditConsulta(id) {
   document.getElementById('c-data').value = c.data;
   document.getElementById('c-hora').value = c.hora;
   document.getElementById('c-status').value = c.status;
-  document.getElementById('c-valor').value = c.valor;
+  document.getElementById('c-valor').value = c.valor || '';
   document.getElementById('c-obs').value = c.obs || '';
   updateProcArea();
   // Load procs
@@ -4093,16 +4141,40 @@ function saveConsulta() {
   }
 
   let consulta;
+  // Preserva o "pago" já existente (se a consulta já tinha financeiro
+  // lançado) — editar uma consulta não deve resetar o pagamento.
+  const financeiroExistente = DB.get('financeiro', []).find(f => String(f.id) === String(editId));
+
   if (editId) {
     const idx = consultas.findIndex(c => c.id == editId);
-    consultas[idx] = { ...consultas[idx], paciente_id: pacId, data, hora, status, profissional, valor: parseFloat(document.getElementById('c-valor').value)||0, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
+    consultas[idx] = { ...consultas[idx], paciente_id: pacId, data, hora, status, profissional, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
+    delete consultas[idx].valor;
+    delete consultas[idx].pago;
     consulta = consultas[idx];
   } else {
     const id = newId();
-    consulta = { id, paciente_id: pacId, data, hora, status, profissional, valor: parseFloat(document.getElementById('c-valor').value)||0, pago: false, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
+    consulta = { id, paciente_id: pacId, data, hora, status, profissional, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
     consultas.push(consulta);
   }
   DB.set('consultas', consultas);
+
+  // Valor/pagamento ficam numa coleção separada, protegida pelo Firestore
+  // só pro admin — assim um dentista salvando uma consulta (ex: mudando o
+  // status) nunca sobrescreve o valor já lançado. Se for o admin salvando,
+  // atualiza o valor com o que está no campo do modal.
+  if (isAdmin()) {
+    const valorInput = document.getElementById('c-valor');
+    const valor = valorInput ? (parseFloat(valorInput.value) || 0) : (financeiroExistente?.valor || 0);
+    const pago = financeiroExistente ? financeiroExistente.pago : false;
+    DB.setOne('financeiro', consulta.id, { consulta_id: consulta.id, paciente_id: pacId, profissional, data, valor, pago });
+    consulta.valor = valor;
+    consulta.pago = pago;
+  } else if (financeiroExistente) {
+    // Mantém os valores em memória pra quem já tinha acesso nessa sessão
+    // (ex: se o admin tiver aberto essa tela antes) não sumir da UI.
+    consulta.valor = financeiroExistente.valor;
+    consulta.pago = financeiroExistente.pago;
+  }
 
   // Create alertas for procs
   if (COMPLETED_STATUSES.includes(status) && procs.length > 0) {
@@ -4249,7 +4321,7 @@ function viewPerfil(id) {
               const procNomes = (c.procs||[]).map(pr => procs.find(p=>p.id===pr.proc_id)?.nome||'').filter(Boolean).join(', ');
               const sigBadge = c.assinatura ? ` <span class="badge badge-green" style="margin-left:6px"><svg style="width:11px;height:11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Assinado</span>` : '';
               const sigDetail = c.assinatura ? `<div style="margin-top:6px"><img src="${c.assinatura.imgData}" style="width:100px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:6px;background:#FAFBFC;padding:2px"><div class="sig-details-toggle" onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Ver detalhes técnicos</div><div class="sig-hash" style="display:none" onclick="event.stopPropagation()">hash: ${c.assinatura.hash}<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();verificarIntegridadePorConsultaId(${c.id}, this)">Verificar integridade</button></div><div class="sig-verify-result" style="display:none"></div></div></div>` : '';
-              return `<div class="history-item history-item-clickable" onclick="openEditConsulta('${c.id}')" title="Clique para ver os detalhes desta consulta"><div class="history-dot"></div><div style="flex:1"><div class="history-date">${fmtDate(c.data)}</div><div class="history-proc">${procNomes || 'Consulta'}${sigBadge}</div><div class="history-obs">${statusLabel(c.status)} · ${fmtMoney(c.valor)}</div>${sigDetail}</div><div class="history-arrow">›</div></div>`;
+              return `<div class="history-item history-item-clickable" onclick="openEditConsulta('${c.id}')" title="Clique para ver os detalhes desta consulta"><div class="history-dot"></div><div style="flex:1"><div class="history-date">${fmtDate(c.data)}</div><div class="history-proc">${procNomes || 'Consulta'}${sigBadge}</div><div class="history-obs">${statusLabel(c.status)}${isAdmin() ? ` · ${fmtMoney(c.valor)}` : ''}</div>${sigDetail}</div><div class="history-arrow">›</div></div>`;
             }).join('')}
           </div>`
         }
@@ -4265,7 +4337,7 @@ function viewPerfil(id) {
         }
       </div>
     </div>
-    <div class="card" style="margin-top:16px">
+    ${!isAdmin() ? '' : `<div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="card-title" style="margin-bottom:0">Histórico Financeiro do Paciente</div>
         <span style="font-size:11px;color:var(--tx-4)">${consultas.filter(c=>COMPLETED_STATUSES.includes(c.status)).length} atendimentos realizados</span>
@@ -4321,7 +4393,7 @@ function viewPerfil(id) {
             </table>`
         }`;
       })()}
-    </div>
+    </div>`}
     ${(() => {
       const docsGerados = DB.get('docs_gerados', [])
         .filter(d => String(d.paciente_id) === String(p.id))
@@ -4650,7 +4722,10 @@ function renderFinanceiro() {
 function marcarPago(id) {
   const consultas = DB.get('consultas', []);
   const idx = consultas.findIndex(c => String(c.id) === String(id));
-  if (idx !== -1) { consultas[idx].pago = true; DB.set('consultas', consultas); }
+  if (idx === -1) return;
+  consultas[idx].pago = true; // reflete na tela imediatamente
+  const fin = DB.get('financeiro', []).find(f => String(f.id) === String(id));
+  DB.setOne('financeiro', id, { consulta_id: id, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
   renderFinanceiro();
 }
 
@@ -4658,7 +4733,10 @@ function marcarPago(id) {
 function marcarPagoEAtualizar(consultaId, pacienteId) {
   const consultas = DB.get('consultas', []);
   const idx = consultas.findIndex(c => String(c.id) === String(consultaId));
-  if (idx !== -1) { consultas[idx].pago = true; DB.set('consultas', consultas); }
+  if (idx === -1) return;
+  consultas[idx].pago = true;
+  const fin = DB.get('financeiro', []).find(f => String(f.id) === String(consultaId));
+  DB.setOne('financeiro', consultaId, { consulta_id: consultaId, paciente_id: consultas[idx].paciente_id, profissional: consultas[idx].profissional, data: consultas[idx].data, valor: fin?.valor || consultas[idx].valor || 0, pago: true });
   viewPerfil(pacienteId);
 }
 
@@ -4707,6 +4785,14 @@ function populateProfConsulta(valorAtual) {
   sel.innerHTML = '<option value="">— Selecionar profissional —</option>'
     + lista.map(p => `<option value="${p.nome}" ${p.nome === valorAtual ? 'selected' : ''}>${p.nome}${p.cro ? ' · CRO: ' + p.cro : ''}</option>`).join('');
   sel.disabled = false;
+
+  // Valor da consulta é protegido: só o admin vê e define. Um dentista
+  // salvando a consulta não deve nem visualizar esse campo, pra não gerar
+  // confusão (e o valor já lançado pelo admin nunca é sobrescrito).
+  const valorWrap = document.getElementById('c-valor-wrap');
+  const valorMsg = document.getElementById('c-valor-oculto-msg');
+  if (valorWrap) valorWrap.style.display = isAdmin() ? '' : 'none';
+  if (valorMsg) valorMsg.style.display = isAdmin() ? 'none' : 'block';
 }
 
 function renderProcList() {
