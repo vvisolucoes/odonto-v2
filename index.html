@@ -1076,6 +1076,7 @@
       </div>
       <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
         <select id="fin-filtro" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+          <option value="dia">Hoje</option>
           <option value="mes">Este mês</option>
           <option value="semana">Esta semana</option>
           <option value="todos">Todos</option>
@@ -2142,7 +2143,7 @@ function openBloqueioDetail(id) {
 }
 
 function confirmRemoveBloqueio() {
-  removeBloqueio(parseInt(document.getElementById('b-id').value));
+  removeBloqueio(document.getElementById('b-id').value);
 }
 
 function removeBloqueio(id) {
@@ -3771,6 +3772,18 @@ async function renderDentistasList() {
     const snap = await getDocs(query(collection(db, 'membros'), where('clinicaId', '==', _clinicaId)));
     const membros = snap.docs.map(d => d.data());
 
+    // Limpeza automática: a coleção legada "profissionais" (usada só para
+    // popular o campo do modal de consulta) pode acumular registros órfãos
+    // de dentistas já removidos (aconteceu com dados de teste antigos, de
+    // antes da correção do bug de exclusão). Sempre que a Equipe da Clínica
+    // carrega, sincroniza: qualquer profissional cujo id não corresponda a
+    // um membro ativo é removido, evitando divergência com relatórios e
+    // com o campo "profissional" das consultas.
+    const uidsAtivos = new Set(membros.map(m => m.uid));
+    DB.get('profissionais', []).forEach(p => {
+      if (!uidsAtivos.has(p.id)) DB.deleteOne('profissionais', p.id);
+    });
+
     if (membros.length === 0) {
       el.innerHTML = linhaAdmin || '<div style="color:var(--tx-4);font-size:13px;padding:8px 0">Nenhum dentista cadastrado ainda.</div>';
       return;
@@ -4502,8 +4515,8 @@ function renderAlertas() {
       </div>
       <span class="badge ${statusBadge}" style="margin-right:8px">${a.status}</span>
       <div class="btn-group">
-        <button class="btn btn-ghost btn-sm" onclick="openAlertaAcao(${a.id})">Atualizar</button>
-        <button class="btn btn-teal btn-sm" onclick="openAgendarPaciente(${a.paciente_id})">Agendar</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAlertaAcao('${a.id}')">Atualizar</button>
+        <button class="btn btn-teal btn-sm" onclick="openAgendarPaciente('${a.paciente_id}')">Agendar</button>
       </div>
     </div>`;
   }).join('');
@@ -4521,7 +4534,7 @@ function openAlertaAcao(id) {
 }
 
 function saveAlertaAcao() {
-  const id = parseInt(document.getElementById('alerta-acao-id').value);
+  const id = document.getElementById('alerta-acao-id').value;
   const alertas = DB.get('alertas', []);
   const idx = alertas.findIndex(a => String(a.id) === String(id));
   if (idx !== -1) {
@@ -4560,6 +4573,7 @@ function renderFinanceiro() {
   };
 
   sel.innerHTML = `
+    <option value="dia">Hoje</option>
     <option value="mes">Este mês</option>
     <option value="semana">Esta semana</option>
     <option value="todos">Todos</option>
@@ -4583,7 +4597,9 @@ function renderFinanceiro() {
 
   let filtered = consultas.filter(c => COMPLETED_STATUSES.includes(c.status));
 
-  if (filtro === 'mes') {
+  if (filtro === 'dia') {
+    filtered = filtered.filter(c => c.data === today);
+  } else if (filtro === 'mes') {
     filtered = filtered.filter(c => c.data.slice(0, 7) === mesAtual);
   } else if (filtro === 'semana') {
     filtered = filtered.filter(c => c.data >= addDays(today, -7));
@@ -4741,11 +4757,22 @@ function exportJSON() {
 
 // Relatório geral da clínica em PDF: um resumo legível (totais, faturamento,
 // equipe, procedimentos) — para dados completos e brutos, use "Backup JSON".
-function exportarRelatorioPDF() {
+async function exportarRelatorioPDF() {
   const cfg = DB.get('config', {});
   const pacientes = DB.get('pacientes', []);
   const consultas = DB.get('consultas', []);
   const procedimentos = DB.get('procedimentos', []);
+
+  // Equipe: busca direto de "membros" (mesma fonte da tela Equipe da
+  // Clínica), em vez da lista legada "profissionais" — evita divergência
+  // com registros órfãos de dentistas já removidos.
+  const equipe = [];
+  if (cfg.nome_dentista) equipe.push({ nome: cfg.nome_dentista, cro: cfg.cro || '' });
+  try {
+    const { db, collection, getDocs, query, where } = window._FB;
+    const snap = await getDocs(query(collection(db, 'membros'), where('clinicaId', '==', _clinicaId)));
+    snap.docs.forEach(d => { const m = d.data(); equipe.push({ nome: m.nome, cro: m.cro || '' }); });
+  } catch (e) { console.warn('Erro ao buscar equipe para o relatório:', e); }
 
   const realizadas = consultas.filter(c => COMPLETED_STATUSES.includes(c.status));
   const agendadas = consultas.filter(c => c.status === 'agendada');
@@ -4821,7 +4848,6 @@ function exportarRelatorioPDF() {
   doc.text('EQUIPE DA CLÍNICA', margin, y);
   y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-  const equipe = getProfissionaisList();
   if (equipe.length === 0) {
     doc.setTextColor(140, 140, 140);
     doc.text('Nenhum profissional cadastrado.', margin, y);
