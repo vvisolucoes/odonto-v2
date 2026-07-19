@@ -4446,6 +4446,26 @@ function viewPerfil(id) {
         }
       </div>
     </div>
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:0">Observações Clínicas</div>
+        <span style="font-size:11px;color:var(--tx-4)">Anotações de consultas anteriores</span>
+      </div>
+      ${(() => {
+        const comObs = consultas.filter(c => c.obs && c.obs.trim());
+        if (comObs.length === 0) {
+          return '<div class="empty-state"><div class="empty-icon" style="color:var(--tx-4)"><svg style="width:36px;height:36px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg></div><div class="empty-text">Nenhuma observação registrada ainda</div></div>';
+        }
+        return `<div style="max-height:320px;overflow-y:auto;margin:0 -4px;padding:0 4px;display:flex;flex-direction:column;gap:10px">
+          ${comObs.map(c => `
+            <div style="border-left:2px solid var(--indigo);padding:2px 0 2px 12px">
+              <div style="font-size:11px;color:var(--tx-4);font-weight:600;margin-bottom:3px">${fmtDate(c.data)}${c.profissional ? ' · ' + c.profissional : ''}</div>
+              <div style="font-size:13px;color:var(--tx-2);white-space:pre-wrap">${c.obs}</div>
+            </div>
+          `).join('')}
+        </div>`;
+      })()}
+    </div>
     ${!isAdmin() ? '' : `<div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div class="card-title" style="margin-bottom:0">Histórico Financeiro do Paciente</div>
