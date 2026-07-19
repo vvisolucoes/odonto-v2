@@ -1133,18 +1133,10 @@
             <button class="btn btn-ghost" onclick="alert('Senha atualizada!')">Atualizar Senha</button>
           </div>
         </div>
-        <div class="card">
+
+        <div class="card" id="config-dentistas-section">
           <div class="config-section">
-            <div class="config-section-title">Procedimentos e Intervalos de Retorno</div>
-            <div id="proc-list"></div>
-            <div style="margin-top:14px;display:flex;gap:8px">
-              <input type="text" id="new-proc-name" placeholder="Novo procedimento" style="flex:1;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
-              <input type="number" id="new-proc-days" placeholder="Dias" style="width:70px;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none;text-align:center">
-              <button class="btn btn-teal" onclick="addProcedimento()">+</button>
-            </div>
-          </div>
-          <div class="config-section" id="config-dentistas-section">
-            <div class="config-section-title">Dentistas da Clínica</div>
+            <div class="config-section-title">Equipe da Clínica</div>
             <div id="dentistas-list" style="margin-bottom:14px"></div>
             <div style="background:var(--bg);border-radius:var(--r);padding:14px;border:1px solid var(--border)">
               <div style="font-size:12px;font-weight:600;color:var(--tx-3);margin-bottom:10px">Cadastrar novo dentista</div>
@@ -1172,24 +1164,21 @@
               <button class="btn btn-teal btn-sm" id="btn-cadastrar-dentista" onclick="cadastrarDentista()">+ Cadastrar Dentista</button>
             </div>
           </div>
+        </div>
+
+        <div class="card">
           <div class="config-section">
-            <div class="config-section-title">Profissionais da Clínica</div>
-            <div id="prof-list" style="margin-bottom:14px"></div>
-            <div style="background:var(--bg);border-radius:var(--r);padding:14px;border:1px solid var(--border)">
-              <div style="font-size:12px;font-weight:600;color:var(--tx-3);margin-bottom:10px">Adicionar novo profissional</div>
-              <div class="field-row" style="margin-bottom:8px">
-                <div class="field" style="margin-bottom:0">
-                  <label>Nome completo</label>
-                  <input type="text" id="new-prof-nome" placeholder="Ex: Dr. João Silva">
-                </div>
-                <div class="field" style="margin-bottom:0">
-                  <label>CRO</label>
-                  <input type="text" id="new-prof-cro" placeholder="Ex: SP-12345">
-                </div>
-              </div>
-              <button class="btn btn-teal btn-sm" onclick="addProfissional()">+ Adicionar Profissional</button>
+            <div class="config-section-title">Procedimentos e Intervalos de Retorno</div>
+            <div id="proc-list"></div>
+            <div style="margin-top:14px;display:flex;gap:8px">
+              <input type="text" id="new-proc-name" placeholder="Novo procedimento" style="flex:1;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+              <input type="number" id="new-proc-days" placeholder="Dias" style="width:70px;padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none;text-align:center">
+              <button class="btn btn-teal" onclick="addProcedimento()">+</button>
             </div>
           </div>
+        </div>
+
+        <div class="card">
           <div class="config-section">
             <div class="config-section-title">Exportar Dados</div>
             <div style="display:flex;gap:10px">
@@ -1887,7 +1876,7 @@ function navigate(page) {
   if (page === 'alertas') renderAlertas();
   if (page === 'financeiro') renderFinanceiro();
   if (page === 'config') {
-    loadConfig(); renderProcList(); renderProfList();
+    loadConfig(); renderProcList();
     if (isAdmin()) renderDentistasList();
     const dentSection = document.getElementById('config-dentistas-section');
     if (dentSection) dentSection.style.display = isAdmin() ? 'block' : 'none';
@@ -2145,7 +2134,11 @@ function confirmRemoveBloqueio() {
 }
 
 function removeBloqueio(id) {
-  DB.set('bloqueios', DB.get('bloqueios', []).filter(b => b.id !== id));
+  // Antes reescrevia a lista inteira via DB.set(), que só grava os itens que
+  // sobraram e nunca manda um "delete" pro item removido — por isso ele
+  // voltava ao recarregar a página. Agora usa DB.deleteOne(), que apaga de
+  // verdade o documento no Firestore.
+  DB.deleteOne('bloqueios', id);
   closeModal('modal-bloqueio');
   renderAgenda();
 }
@@ -2242,6 +2235,32 @@ function renderAgenda() {
   if (showWeek) renderWeekView(); else renderListView();
 }
 
+// Gera os horários da grade da Agenda: 07:00–20:00, de 30 em 30 minutos
+function slotsAgenda() {
+  const hours = [];
+  for (let h = 7; h <= 20; h++) { hours.push(`${String(h).padStart(2,'0')}:00`); if (h < 20) hours.push(`${String(h).padStart(2,'0')}:30`); }
+  return hours;
+}
+function horaParaMinutos(hora) {
+  const [h, m] = (hora || '00:00').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+// O campo "Hora" da consulta continua livre (qualquer horário), mas a
+// grade da Agenda só tem posições de 30 em 30 min — então cada consulta é
+// encaixada visualmente no slot da grade mais próximo do seu horário real
+// (o horário real continua sendo mostrado no card, só a posição é
+// aproximada).
+function slotMaisProximo(hora) {
+  const slots = slotsAgenda();
+  const alvo = horaParaMinutos(hora);
+  let melhor = slots[0], menorDist = Infinity;
+  for (const s of slots) {
+    const dist = Math.abs(horaParaMinutos(s) - alvo);
+    if (dist < menorDist) { menorDist = dist; melhor = s; }
+  }
+  return melhor;
+}
+
 function renderListView() {
   // A partir de agora a Agenda mostra as consultas de TODOS os dentistas
   // (a clínica tem mais de uma sala, então cabe mais de uma consulta no
@@ -2251,19 +2270,19 @@ function renderListView() {
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
   const dayC = consultas.filter(c => c.data === agendaDate);
-  const hours = [];
-  for (let h = 7; h <= 20; h++) { hours.push(`${String(h).padStart(2,'0')}:00`); if (h < 20) hours.push(`${String(h).padStart(2,'0')}:30`); }
+  const hours = slotsAgenda();
   const el = document.getElementById('time-slots-list');
   el.innerHTML = hours.map(time => {
-    const cs = dayC.filter(c => c.hora === time);
+    const cs = dayC.filter(c => slotMaisProximo(c.hora) === time);
     const b = getBloqueio(bloqueios, agendaDate, time);
 
     const itens = cs.map(c => {
       const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
       const podeAbrir = !isDentista() || c.profissional === getCurrentDentistaNome();
       const clickAttr = podeAbrir ? `onclick="openEditConsulta('${c.id}')"` : `onclick="alert('Você só pode visualizar as suas próprias consultas.')" style="cursor:not-allowed"`;
+      const horaReal = c.hora !== time ? ` <span style="font-weight:400;color:var(--tx-4)">(${c.hora})</span>` : '';
       return `<div class="slot-area slot-${c.status}" ${clickAttr}>
-        <div class="slot-name">${p?.nome || 'Paciente'}${c.profissional ? ` <span style="font-weight:400;color:var(--tx-4)">· ${c.profissional}</span>` : ''}</div>
+        <div class="slot-name">${p?.nome || 'Paciente'}${horaReal}${c.profissional ? ` <span style="font-weight:400;color:var(--tx-4)">· ${c.profissional}</span>` : ''}</div>
         <div class="slot-proc">${c.obs || statusLabel(c.status)} · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}</div>
       </div>`;
     }).join('');
@@ -2320,8 +2339,7 @@ function renderWeekView() {
     }).join('');
 
   // Time slots
-  const hours = [];
-  for (let h = 7; h <= 20; h++) { hours.push(`${String(h).padStart(2,'0')}:00`); if (h < 20) hours.push(`${String(h).padStart(2,'0')}:30`); }
+  const hours = slotsAgenda();
 
   const body = document.getElementById('cal-week-body');
   body.innerHTML = hours.map(time => {
@@ -2329,7 +2347,7 @@ function renderWeekView() {
     return `<div class="cal-row${isHour ? ' cal-hour-row' : ''}">
       <div class="cal-tlabel">${isHour ? time : ''}</div>
       ${wDates.map(date => {
-        const cs = consultas.filter(c => c.data === date && c.hora === time);
+        const cs = consultas.filter(c => c.data === date && slotMaisProximo(c.hora) === time);
         const todayCls = date === today ? ' today-col' : '';
         const b = getBloqueio(bloqueios, date, time);
 
@@ -2342,7 +2360,7 @@ function renderWeekView() {
             const clickAttr = podeAbrir
               ? `onclick="openEditConsulta('${c.id}');event.stopPropagation()"`
               : `onclick="alert('Você só pode visualizar as suas próprias consultas.');event.stopPropagation()" style="cursor:not-allowed"`;
-            return `<div class="cal-appt cal-appt-${c.status}" ${clickAttr} title="${p?.nome||''}${c.profissional ? ' · ' + c.profissional : ''} · ${time}">${nome}${dentistaPrimeiroNome ? ' · ' + dentistaPrimeiroNome : ''}</div>`;
+            return `<div class="cal-appt cal-appt-${c.status}" ${clickAttr} title="${p?.nome||''}${c.profissional ? ' · ' + c.profissional : ''} · ${c.hora}">${nome}${dentistaPrimeiroNome ? ' · ' + dentistaPrimeiroNome : ''}</div>`;
           }).join('');
           return `<div class="cal-cell${todayCls}" onclick="openModalAgendar('${time}','${date}')">
             ${apts}
@@ -2955,8 +2973,10 @@ function downloadDoc() {
 
 function removeDocumento(docId, targetElId, pacienteId, consultaId) {
   if (!confirm('Remover este documento? Esta ação não pode ser desfeita.')) return;
-  const documentos = DB.get('documentos', []).filter(d => d.id !== docId);
-  DB.set('documentos', documentos);
+  // Mesmo bug: DB.set() com a lista filtrada não apaga o documento antigo
+  // no Firestore, só deixa de reescrevê-lo — ele continuava existindo lá e
+  // voltava ao recarregar. DB.deleteOne() apaga de verdade.
+  DB.deleteOne('documentos', docId);
   renderDocGallery(targetElId, pacienteId, consultaId === 'null' ? null : consultaId);
 }
 
@@ -3710,9 +3730,9 @@ async function removerDentista(uid, nome) {
   if (!confirm(`Remover acesso de ${nome}?\nEle não conseguirá mais entrar no sistema.`)) return;
   const { db, doc, deleteDoc } = window._FB;
   await deleteDoc(doc(db, 'membros', uid));
-  // Remove dos profissionais
-  const profs = DB.get('profissionais', []).filter(p => p.id !== uid);
-  DB.set('profissionais', profs);
+  // Remove dos profissionais (o id do profissional criado junto = uid do
+  // dentista). Mesmo bug de antes: DB.set() não apaga de verdade.
+  DB.deleteOne('profissionais', uid);
   renderDentistasList();
 }
 
@@ -3721,17 +3741,30 @@ async function renderDentistasList() {
   if (!el) return;
   el.innerHTML = '<div style="color:var(--tx-4);font-size:13px">Carregando...</div>';
 
+  // Linha do admin/dentista principal (dono da clínica) — sempre aparece
+  // primeiro, sem botões de ação (não tem como "remover" o dono da clínica
+  // por aqui).
+  const cfg = DB.get('config', {});
+  const linhaAdmin = cfg.nome_dentista ? `
+    <div class="proc-row" style="align-items:center">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--tx-1)">${cfg.nome_dentista}</div>
+        <div style="font-size:11.5px;color:var(--tx-4)">${cfg.cro ? 'CRO: ' + cfg.cro + ' · ' : ''}<span style="color:var(--indigo)">Principal</span></div>
+      </div>
+    </div>
+  ` : '';
+
   try {
     const { db, collection, getDocs, query, where } = window._FB;
     const snap = await getDocs(query(collection(db, 'membros'), where('clinicaId', '==', _clinicaId)));
     const membros = snap.docs.map(d => d.data());
 
     if (membros.length === 0) {
-      el.innerHTML = '<div style="color:var(--tx-4);font-size:13px;padding:8px 0">Nenhum dentista cadastrado ainda.</div>';
+      el.innerHTML = linhaAdmin || '<div style="color:var(--tx-4);font-size:13px;padding:8px 0">Nenhum dentista cadastrado ainda.</div>';
       return;
     }
 
-    el.innerHTML = membros.map(m => `
+    el.innerHTML = linhaAdmin + membros.map(m => `
       <div class="proc-row" style="align-items:center">
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600;color:var(--tx-1)">${m.nome}</div>
@@ -3746,7 +3779,7 @@ async function renderDentistasList() {
       </div>
     `).join('');
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--danger);font-size:13px">Erro ao carregar: ' + e.message + '</div>';
+    el.innerHTML = linhaAdmin + '<div style="color:var(--danger);font-size:13px">Erro ao carregar: ' + e.message + '</div>';
   }
 }
 
@@ -4619,33 +4652,6 @@ function saveConfig() {
   alert('Configurações salvas!');
 }
 
-function renderProfList() {
-  const profissionais = DB.get('profissionais', []);
-  const cfg = DB.get('config', {});
-  const el = document.getElementById('prof-list');
-  if (!el) return;
-
-  // Monta lista: dentista principal + cadastrados
-  const todos = [];
-  if (cfg.nome_dentista) todos.push({ nome: cfg.nome_dentista, cro: cfg.cro || '', principal: true });
-  profissionais.forEach(p => todos.push({ ...p, principal: false }));
-
-  if (todos.length === 0) {
-    el.innerHTML = '<div style="color:var(--tx-4);font-size:13px;padding:8px 0">Nenhum profissional cadastrado ainda.</div>';
-    return;
-  }
-
-  el.innerHTML = todos.map((p, i) => `
-    <div class="proc-row" style="align-items:center">
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:600;color:var(--tx-1)">${p.nome}</div>
-        <div style="font-size:11.5px;color:var(--tx-4)">${p.cro ? 'CRO: ' + p.cro : 'CRO não informado'}${p.principal ? ' · <span style="color:var(--indigo)">Principal</span>' : ''}</div>
-      </div>
-      ${p.principal ? '' : `<button style="background:none;border:none;cursor:pointer;color:var(--tx-4);padding:4px" onclick="removeProfissional(${i - (cfg.nome_dentista ? 1 : 0)})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`}
-    </div>
-  `).join('');
-}
-
 // Popula o select de profissional no modal de consulta.
 // Agora qualquer usuário (admin ou dentista) pode escolher qualquer
 // profissional — a clínica tem mais de uma sala, então um dentista pode
@@ -4666,27 +4672,6 @@ function populateProfConsulta(valorAtual) {
   sel.innerHTML = '<option value="">— Selecionar profissional —</option>'
     + lista.map(p => `<option value="${p.nome}" ${p.nome === valorAtual ? 'selected' : ''}>${p.nome}${p.cro ? ' · CRO: ' + p.cro : ''}</option>`).join('');
   sel.disabled = false;
-}
-
-function addProfissional() {
-  const nome = document.getElementById('new-prof-nome').value.trim();
-  const cro  = document.getElementById('new-prof-cro').value.trim();
-  if (!nome) { alert('Informe o nome do profissional.'); return; }
-  const profissionais = DB.get('profissionais', []);
-  const id = newId();
-  profissionais.push({ id, nome, cro });
-  DB.set('profissionais', profissionais);
-  document.getElementById('new-prof-nome').value = '';
-  document.getElementById('new-prof-cro').value = '';
-  renderProfList();
-}
-
-function removeProfissional(idx) {
-  if (!confirm('Remover profissional?')) return;
-  const profissionais = DB.get('profissionais', []);
-  profissionais.splice(idx, 1);
-  DB.set('profissionais', profissionais);
-  renderProfList();
 }
 
 function renderProcList() {
@@ -4710,8 +4695,7 @@ function updateProcDias(id, dias) {
 
 function removeProcedimento(id) {
   if (!confirm('Remover procedimento?')) return;
-  const procs = DB.get('procedimentos', []).filter(p => p.id !== id);
-  DB.set('procedimentos', procs);
+  DB.deleteOne('procedimentos', id);
   renderProcList();
 }
 
