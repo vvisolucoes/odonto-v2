@@ -1181,9 +1181,21 @@
         <div class="card">
           <div class="config-section">
             <div class="config-section-title">Exportar Dados</div>
-            <div style="display:flex;gap:10px">
-              <button class="btn btn-ghost" onclick="exportJSON()">Exportar JSON</button>
-              <button class="btn btn-ghost" onclick="alert('Relatório PDF em breve!')"><svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg> Relatório PDF</button>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--tx-1)">Relatório em PDF</div>
+                  <div style="font-size:11.5px;color:var(--tx-4)">Resumo pronto pra imprimir: totais de pacientes e consultas, faturamento e equipe da clínica.</div>
+                </div>
+                <button class="btn btn-teal btn-sm" style="white-space:nowrap" onclick="exportarRelatorioPDF()">Gerar PDF</button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--tx-1)">Backup completo (JSON)</div>
+                  <div style="font-size:11.5px;color:var(--tx-4)">Todos os dados brutos — pacientes, consultas e alertas — pra guardar ou usar em outro sistema.</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="white-space:nowrap" onclick="exportJSON()">Baixar JSON</button>
+              </div>
             </div>
           </div>
         </div>
@@ -4725,6 +4737,134 @@ function exportJSON() {
   a.href = URL.createObjectURL(blob);
   a.download = 'odontogesto_backup_' + new Date().toISOString().split('T')[0] + '.json';
   a.click();
+}
+
+// Relatório geral da clínica em PDF: um resumo legível (totais, faturamento,
+// equipe, procedimentos) — para dados completos e brutos, use "Backup JSON".
+function exportarRelatorioPDF() {
+  const cfg = DB.get('config', {});
+  const pacientes = DB.get('pacientes', []);
+  const consultas = DB.get('consultas', []);
+  const procedimentos = DB.get('procedimentos', []);
+
+  const realizadas = consultas.filter(c => COMPLETED_STATUSES.includes(c.status));
+  const agendadas = consultas.filter(c => c.status === 'agendada');
+  const canceladas = consultas.filter(c => c.status === 'cancelada');
+  const faturado = realizadas.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const recebido = realizadas.filter(c => c.pago).reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const pendente = faturado - recebido;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 20;
+  const pageW = 210, pageH = 297;
+  let y = 20;
+
+  const novaFolhaSeNecessario = (espaco = 15) => {
+    if (y + espaco > pageH - 15) { doc.addPage(); y = 20; }
+  };
+
+  // Cabeçalho
+  doc.setFillColor(15, 17, 23);
+  doc.rect(0, 0, pageW, 35, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text(cfg.nome_clinica || 'Clínica Odontológica', margin, 15);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  if (cfg.nome_dentista) doc.text('Dr(a). ' + cfg.nome_dentista + (cfg.cro ? ' · CRO: ' + cfg.cro : ''), margin, 22);
+  if (cfg.endereco) doc.text(cfg.endereco, margin, 28);
+  if (cfg.telefone) doc.text('Tel: ' + cfg.telefone, pageW - margin, 22, { align: 'right' });
+
+  y = 48;
+  doc.setTextColor(99, 102, 241);
+  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('RELATÓRIO GERAL DA CLÍNICA', pageW / 2, y, { align: 'center' });
+  y += 6;
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.setTextColor(140, 140, 140);
+  doc.text('Gerado em ' + new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), pageW / 2, y, { align: 'center' });
+  y += 8;
+  doc.setDrawColor(99, 102, 241);
+  doc.line(margin, y, pageW - margin, y);
+  y += 12;
+
+  // Resumo geral
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+  doc.text('RESUMO GERAL', margin, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  const linhasResumo = [
+    ['Total de pacientes cadastrados', String(pacientes.length)],
+    ['Total de consultas registradas', String(consultas.length)],
+    ['Consultas realizadas/finalizadas', String(realizadas.length)],
+    ['Consultas agendadas (futuras)', String(agendadas.length)],
+    ['Consultas canceladas', String(canceladas.length)],
+    ['Valor faturado (consultas concluídas)', fmtMoney(faturado)],
+    ['Valor recebido', fmtMoney(recebido)],
+    ['Valor pendente de recebimento', fmtMoney(pendente)],
+  ];
+  linhasResumo.forEach(([label, valor]) => {
+    novaFolhaSeNecessario();
+    doc.text(label, margin, y);
+    doc.setFont('helvetica', 'bold');
+    doc.text(valor, pageW - margin, y, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    y += 6;
+  });
+  y += 6;
+
+  // Equipe da clínica
+  novaFolhaSeNecessario(20);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text('EQUIPE DA CLÍNICA', margin, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  const equipe = getProfissionaisList();
+  if (equipe.length === 0) {
+    doc.setTextColor(140, 140, 140);
+    doc.text('Nenhum profissional cadastrado.', margin, y);
+    doc.setTextColor(30, 30, 30);
+    y += 6;
+  } else {
+    equipe.forEach(p => {
+      novaFolhaSeNecessario();
+      doc.text('• ' + p.nome + (p.cro ? '  (CRO: ' + p.cro + ')' : ''), margin, y);
+      y += 6;
+    });
+  }
+  y += 6;
+
+  // Procedimentos cadastrados
+  novaFolhaSeNecessario(20);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text('PROCEDIMENTOS E INTERVALOS DE RETORNO', margin, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  if (procedimentos.length === 0) {
+    doc.setTextColor(140, 140, 140);
+    doc.text('Nenhum procedimento cadastrado.', margin, y);
+    doc.setTextColor(30, 30, 30);
+    y += 6;
+  } else {
+    procedimentos.forEach(p => {
+      novaFolhaSeNecessario();
+      doc.text(p.nome, margin, y);
+      doc.text(p.dias + ' dias', pageW - margin, y, { align: 'right' });
+      y += 6;
+    });
+  }
+
+  // Rodapé com numeração de página
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(160, 160, 160);
+    doc.text('OdontoGestão · Página ' + i + ' de ' + totalPaginas, pageW / 2, pageH - 10, { align: 'center' });
+  }
+
+  doc.save('relatorio_geral_' + new Date().toISOString().split('T')[0] + '.pdf');
 }
 
 // ════════════════════════════════════════
