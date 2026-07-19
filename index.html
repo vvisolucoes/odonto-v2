@@ -1700,7 +1700,10 @@ async function loadAllFromFirestore() {
     if (fin) { c.valor = fin.valor; c.pago = fin.pago; }
   });
 
-  await migrarDadosFinanceirosLegados();
+  // Migração roda em segundo plano, sem bloquear o carregamento do resto
+  // do sistema — com muitas consultas antigas, esperar isso terminar
+  // deixaria a tela de carregamento presa por muito tempo.
+  migrarDadosFinanceirosLegados();
 }
 
 // Migração única: consultas antigas ainda têm valor/pago gravados dentro
@@ -1708,22 +1711,34 @@ async function loadAllFromFirestore() {
 // "financeiro" e limpa da consulta, pra não vazar mais pro dentista.
 async function migrarDadosFinanceirosLegados() {
   if (!isAdmin()) return; // só o admin tem acesso de escrita/leitura pra migrar
-  const { db, doc, getDoc, setDoc, updateDoc, deleteField } = window._FB;
+  const { db, doc, setDoc, updateDoc, deleteField } = window._FB;
   const consultas = Object.values(_store['consultas'] || {});
   const pendentes = consultas.filter(c => c.valor !== undefined && !_store['financeiro']?.[c.id]);
   if (pendentes.length === 0) return;
 
   console.log(`[migração] Movendo dados financeiros de ${pendentes.length} consulta(s) antiga(s) para a coleção "financeiro"...`);
-  for (const c of pendentes) {
-    try {
-      await setDoc(_docRef('financeiro', c.id), {
-        consulta_id: c.id, paciente_id: c.paciente_id, profissional: c.profissional || '',
-        data: c.data, valor: c.valor || 0, pago: !!c.pago,
-      });
-      await updateDoc(doc(db, 'clinicas', _clinicaId, 'consultas', c.id), { valor: deleteField(), pago: deleteField() });
-      _store['financeiro'][c.id] = { id: c.id, valor: c.valor || 0, pago: !!c.pago };
-    } catch (e) { console.warn('[migração] Falha ao migrar consulta', c.id, e); }
+
+  // Processa em lotes paralelos (em vez de um por um) — bem mais rápido
+  // com muitas consultas, sem sobrecarregar o navegador de uma vez só.
+  const TAMANHO_LOTE = 40;
+  for (let i = 0; i < pendentes.length; i += TAMANHO_LOTE) {
+    const lote = pendentes.slice(i, i + TAMANHO_LOTE);
+    await Promise.all(lote.map(async c => {
+      try {
+        await setDoc(_docRef('financeiro', c.id), {
+          consulta_id: c.id, paciente_id: c.paciente_id, profissional: c.profissional || '',
+          data: c.data, valor: c.valor || 0, pago: !!c.pago,
+        });
+        await updateDoc(doc(db, 'clinicas', _clinicaId, 'consultas', c.id), { valor: deleteField(), pago: deleteField() });
+        _store['financeiro'][c.id] = { id: c.id, valor: c.valor || 0, pago: !!c.pago };
+      } catch (e) { console.warn('[migração] Falha ao migrar consulta', c.id, e); }
+    }));
   }
+  console.log('[migração] Concluída.');
+  // Se a tela do Financeiro ou o Dashboard já estiverem abertos, atualiza
+  // pra refletir os dados recém-migrados.
+  if (document.getElementById('page-dashboard')?.classList.contains('active')) renderDashboard();
+  if (document.getElementById('page-financeiro')?.classList.contains('active')) renderFinanceiro();
 }
 
 // Gera ID único string (usado no lugar de inteiros sequenciais)
