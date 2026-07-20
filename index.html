@@ -1864,6 +1864,19 @@ function applyConfigToUI() {
   document.getElementById('sidebar-initials').textContent = nome.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 }
 
+// Retorna a data de hoje (ou de um Date específico) no formato YYYY-MM-DD,
+// usando o horário LOCAL do navegador. Corrige um bug de fuso horário:
+// `new Date().toISOString()` converte pra UTC, então à noite no Brasil
+// (UTC-3) ele já "pensa" que é o dia seguinte, fazendo telas como o
+// Dashboard mostrarem 0 consultas de hoje mesmo com consultas marcadas
+// corretamente para o dia local certo.
+function getLocalDateString(d = new Date()) {
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
@@ -2067,7 +2080,7 @@ function toggleMobile() {
 // DASHBOARD
 // ════════════════════════════════════════
 function renderDashboard() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   const cfg = DB.get('config', {});
@@ -2143,7 +2156,7 @@ function renderDashboard() {
 // ════════════════════════════════════════
 function openStatDetail(type) {
   if (type === 'receita' && !isAdmin()) return; // dado financeiro restrito ao admin
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const consultas = DB.get('consultas', []);
   const alertas = DB.get('alertas', []);
   const pacientes = DB.get('pacientes', []);
@@ -2347,7 +2360,7 @@ function saveBloqueio() {
 // ════════════════════════════════════════
 // AGENDA
 // ════════════════════════════════════════
-let agendaDate = new Date().toISOString().split('T')[0];
+let agendaDate = getLocalDateString();
 let calView = 'week';
 
 function isDesktop() { return window.innerWidth >= 769; }
@@ -2365,7 +2378,7 @@ function changeDay(n) {
 }
 
 function goToday() {
-  agendaDate = new Date().toISOString().split('T')[0];
+  agendaDate = getLocalDateString();
   renderAgenda();
 }
 
@@ -2382,7 +2395,7 @@ function getWeekDates(dateStr) {
 }
 
 function renderAgenda() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const desktop = isDesktop();
   const showWeek = desktop && calView === 'week';
 
@@ -2494,7 +2507,7 @@ function renderWeekView() {
   const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
   const bloqueios = DB.get('bloqueios', []);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const wDates = getWeekDates(agendaDate);
   const dayNames = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
 
@@ -2769,7 +2782,7 @@ function openModalAssinatura() {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacId));
   if (!p) return;
 
-  const data = document.getElementById('c-data').value || new Date().toISOString().split('T')[0];
+  const data = document.getElementById('c-data').value || getLocalDateString();
   const hora = document.getElementById('c-hora').value || '--:--';
   const procsTexto = buildProcsTextoFromForm();
 
@@ -3417,7 +3430,7 @@ function openAtestado(pacienteId) {
   const idade = p.nasc ? Math.floor((new Date() - new Date(p.nasc + 'T12:00:00')) / (365.25 * 86400000)) : null;
   document.getElementById('atestado-paciente-info').textContent =
     p.nome + (p.cpf ? ' · CPF: ' + p.cpf : '') + (idade ? ' · ' + idade + ' anos' : '');
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = getLocalDateString();
   document.getElementById('atestado-data-inicio').value = hoje;
   document.getElementById('atestado-dias').value = '';
   document.getElementById('atestado-data-fim').value = '';
@@ -3536,7 +3549,7 @@ function gerarAtestadoPDF() {
   doc.text(nomeDentista ? 'Dr(a). ' + nomeDentista : 'Assinatura do Dentista', margin, y);
   if (croDentista) { y += 5; doc.text('CRO: ' + croDentista, margin, y); }
 
-  doc.save('Atestado_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + (dataInicio||new Date().toISOString().split('T')[0]) + '.pdf');
+  doc.save('Atestado_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + (dataInicio||getLocalDateString()) + '.pdf');
 
   // Salva no histórico de documentos do paciente
   const docsGerados = DB.get('docs_gerados', []);
@@ -3714,7 +3727,7 @@ function gerarReceituarioPDF() {
   // Validade
   doc.text('Receita válida por 30 dias', 210-margin, y-4, { align:'right' });
 
-  doc.save('Receituario_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + new Date().toISOString().split('T')[0] + '.pdf');
+  doc.save('Receituario_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + getLocalDateString() + '.pdf');
 
   // Salva no histórico de documentos do paciente
   const docsGerados = DB.get('docs_gerados', []);
@@ -4338,7 +4351,7 @@ function renderPacientes() {
   const pacientes = DB.get('pacientes', []);
   const alertas = DB.get('alertas', []);
   const consultas = DB.get('consultas', []);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const umAnoAtras = addDays(today, -365);
   const soInativos = filtroPacientes === 'inativos';
   const soAtivos   = filtroPacientes === 'ativos';
@@ -4413,7 +4426,7 @@ function viewPerfil(id) {
   const consultas = DB.get('consultas', []).filter(c => String(c.paciente_id) === String(id)).sort((a,b) => b.data.localeCompare(a.data));
   const alertas = DB.get('alertas', []).filter(a => String(a.paciente_id) === String(id));
   const procs = DB.get('procedimentos', []);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
 
   const initials = p.nome.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const idade = p.nasc ? Math.floor((new Date() - new Date(p.nasc + 'T12:00:00')) / (365.25 * 86400000)) : '–';
@@ -4604,7 +4617,7 @@ function openAgendarPaciente(id, alertaId) {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(id));
   clearConsultaModal();
   _alertaOrigemId = alertaId || null;
-  document.getElementById('c-data').value = new Date().toISOString().split('T')[0];
+  document.getElementById('c-data').value = getLocalDateString();
   // Preenche e trava o campo de paciente — já vem pré-selecionado do perfil
   const searchEl = document.getElementById('c-paciente-search');
   searchEl.value = p?.nome || '';
@@ -4676,14 +4689,14 @@ function maskTel(el) {
 // ALERTAS
 // ════════════════════════════════════════
 function updateBadgeAlertas() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const alertas = DB.get('alertas', []);
   const urgentes = alertas.filter(a => a.status === 'pendente' && a.data_prevista <= addDays(today, 30)).length;
   document.getElementById('badge-alertas').textContent = urgentes;
 }
 
 function renderAlertas() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const alertas = DB.get('alertas', []);
   const pacientes = DB.get('pacientes', []);
   const procs = DB.get('procedimentos', []);
@@ -4775,7 +4788,7 @@ function saveAlertaAcao() {
 // FINANCEIRO
 // ════════════════════════════════════════
 function renderFinanceiro() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const mesAtual = today.slice(0, 7); // "YYYY-MM"
   const consultas = DB.get('consultas', []);
   const pacientes = DB.get('pacientes', []);
@@ -4930,7 +4943,7 @@ function marcarPagoEAtualizar(consultaId, pacienteId) {
 // ════════════════════════════════════════
 function renderProducao() {
   if (!isDentista()) return;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const mesAtual = today.slice(0, 7);
   const nome = getCurrentDentistaNome();
   const pacientes = DB.get('pacientes', []);
@@ -5230,7 +5243,7 @@ function exportJSON() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'odontogesto_backup_' + new Date().toISOString().split('T')[0] + '.json';
+  a.download = 'odontogesto_backup_' + getLocalDateString() + '.json';
   a.click();
 }
 
@@ -5369,7 +5382,7 @@ async function exportarRelatorioPDF() {
     doc.text('OdontoGestão · Página ' + i + ' de ' + totalPaginas, pageW / 2, pageH - 10, { align: 'center' });
   }
 
-  doc.save('relatorio_geral_' + new Date().toISOString().split('T')[0] + '.pdf');
+  doc.save('relatorio_geral_' + getLocalDateString() + '.pdf');
 }
 
 // ════════════════════════════════════════
