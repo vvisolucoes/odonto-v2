@@ -2205,7 +2205,7 @@ function openStatDetail(type) {
               <td><span style="cursor:pointer;color:var(--indigo);font-weight:600" onclick="closeModal('modal-stat-detail');viewPerfil('${p?.id}')">${p?.nome||'?'}</span><div style="font-size:11px;color:var(--tx-4)">${p?.tel||''}</div></td>
               <td>${pr?.nome||'?'}</td>
               <td><span class="badge badge-red">${dias}d atraso</span></td>
-              <td><button class="btn btn-teal btn-sm" onclick="closeModal('modal-stat-detail');openAgendarPaciente('${a.paciente_id}')">Agendar</button></td>
+              <td><button class="btn btn-teal btn-sm" onclick="closeModal('modal-stat-detail');openAgendarPaciente('${a.paciente_id}','${a.id}')">Agendar</button></td>
             </tr>`;
           }).join('')
         }</tbody></table>`;
@@ -2635,6 +2635,7 @@ function clearConsultaModal() {
   document.getElementById('c-procs-list').innerHTML = '';
   document.getElementById('c-error').style.display = 'none';
   pendingAssinatura = null;
+  _alertaOrigemId = null;
   renderSigPreview();
   const docGalleryEl = document.getElementById('c-doc-gallery');
   if (docGalleryEl) docGalleryEl.innerHTML = '';
@@ -2703,6 +2704,7 @@ function selectPacienteConsulta(id, nome) {
 // ASSINATURA ELETRÔNICA
 // ════════════════════════════════════════
 let pendingAssinatura = null; // { imgData, hash, timestamp, paciente_id, paciente_nome, paciente_cpf, procsTexto, dataConsulta, dispositivo, consentimento }
+let _alertaOrigemId = null; // se o modal de consulta foi aberto pelo botão "Agendar" de um alerta, guarda o id dele pra marcar como "agendado" ao salvar
 let sigCtx = null, sigDrawing = false, sigHasStroke = false, sigDpr = window.devicePixelRatio || 1;
 
 // Lê o formulário de procedimentos da consulta e monta o mesmo texto usado tanto
@@ -4296,6 +4298,19 @@ function saveConsulta() {
     DB.set('alertas', alertas);
   }
 
+  // Se esse agendamento veio do botão "Agendar" de um alerta de retorno,
+  // marca esse alerta como "agendado" automaticamente — sem precisar abrir
+  // "Atualizar" separadamente.
+  if (_alertaOrigemId) {
+    const alertasAtuais = DB.get('alertas', []);
+    const idxAlerta = alertasAtuais.findIndex(a => String(a.id) === String(_alertaOrigemId));
+    if (idxAlerta !== -1) {
+      alertasAtuais[idxAlerta].status = 'agendado';
+      DB.set('alertas', alertasAtuais);
+    }
+    _alertaOrigemId = null;
+  }
+
   closeModal('modal-consulta');
   renderAgenda();
   updateBadgeAlertas();
@@ -4585,9 +4600,10 @@ function viewPerfil(id) {
   navigate('perfil');
 }
 
-function openAgendarPaciente(id) {
+function openAgendarPaciente(id, alertaId) {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(id));
   clearConsultaModal();
+  _alertaOrigemId = alertaId || null;
   document.getElementById('c-data').value = new Date().toISOString().split('T')[0];
   // Preenche e trava o campo de paciente — já vem pré-selecionado do perfil
   const searchEl = document.getElementById('c-paciente-search');
@@ -4724,7 +4740,7 @@ function renderAlertas() {
       <span class="badge ${statusBadge}" style="margin-right:8px">${a.status}</span>
       <div class="btn-group">
         <button class="btn btn-ghost btn-sm" onclick="openAlertaAcao('${a.id}')">Atualizar</button>
-        <button class="btn btn-teal btn-sm" onclick="openAgendarPaciente('${a.paciente_id}')">Agendar</button>
+        <button class="btn btn-teal btn-sm" onclick="openAgendarPaciente('${a.paciente_id}','${a.id}')">Agendar</button>
       </div>
     </div>`;
   }).join('');
