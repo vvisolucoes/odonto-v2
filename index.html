@@ -1325,6 +1325,7 @@
     <div class="modal-title">Nova Consulta</div>
     <div class="modal-sub">Agende ou registre uma consulta</div>
     <div id="c-error" class="modal-error" style="display:none"></div>
+    <div id="c-somente-leitura-msg" style="display:none;font-size:12px;color:var(--tx-3);background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:14px">👁️ Somente visualização — esta consulta é de outro profissional.</div>
     <div class="field" style="position:relative">
       <label>Paciente *</label>
       <input type="text" id="c-paciente-search" placeholder="Digitar nome do paciente..." oninput="searchPacienteConsulta()" autocomplete="off">
@@ -1359,7 +1360,7 @@
       <div class="card-title" style="margin-bottom:10px">Procedimentos Realizados</div>
       <div id="c-procs-list"></div>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-        <button class="btn btn-ghost btn-sm" onclick="addProcRow()">+ Adicionar procedimento</button>
+        <button class="btn btn-ghost btn-sm" id="btn-add-proc-row" onclick="addProcRow()">+ Adicionar procedimento</button>
         <button type="button" class="btn-assinar" id="btn-abrir-assinatura" style="margin-left:auto" onclick="openModalAssinatura()">✍️ Assinar com paciente</button>
       </div>
       <div id="c-sig-preview"></div>
@@ -1378,7 +1379,7 @@
       <button class="btn btn-ghost" id="btn-enviar-nf" onclick="enviarReciboEmail()" style="display:none;color:var(--success);border-color:var(--success-bd)">📧 Enviar Recibo</button>
       <button class="btn btn-ghost" onclick="openReceituarioConsulta()">💊 Receituário</button>
       <button class="btn btn-ghost" onclick="openAtestadoConsulta()">📋 Atestado</button>
-      <button class="btn btn-teal" onclick="saveConsulta()">Salvar Consulta</button>
+      <button class="btn btn-teal" id="btn-salvar-consulta" onclick="saveConsulta()">Salvar Consulta</button>
     </div>
   </div>
 </div>
@@ -2463,12 +2464,10 @@ function renderListView() {
 
     const itens = cs.map(c => {
       const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
-      const podeAbrir = !isDentista() || c.profissional === getCurrentDentistaNome();
-      const clickAttr = podeAbrir ? `onclick="openEditConsulta('${c.id}')"` : `onclick="alert('Você só pode visualizar as suas próprias consultas.')" style="cursor:not-allowed"`;
       const horaReal = c.hora !== time ? ` <span style="font-weight:400;color:var(--tx-4)">(${c.hora})</span>` : '';
-      return `<div class="slot-area slot-${c.status}" ${clickAttr}>
+      return `<div class="slot-area slot-${c.status}" onclick="openEditConsulta('${c.id}')">
         <div class="slot-name">${p?.nome || 'Paciente'}${horaReal}${c.profissional ? ` <span style="font-weight:400;color:var(--tx-4)">· ${c.profissional}</span>` : ''}</div>
-        <div class="slot-proc">${c.obs || statusLabel(c.status)}${isAdmin() ? ` · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}` : ''}</div>
+        <div class="slot-proc">${c.obs || statusLabel(c.status)} · ${fmtMoney(c.valor)} ${c.pago ? '✓' : ''}</div>
       </div>`;
     }).join('');
 
@@ -2541,11 +2540,7 @@ function renderWeekView() {
             const p = pacientes.find(p => String(p.id) === String(c.paciente_id));
             const nome = (p?.nome || 'Paciente').split(' ')[0];
             const dentistaPrimeiroNome = c.profissional ? c.profissional.split(' ')[0] : '';
-            const podeAbrir = !isDentista() || c.profissional === getCurrentDentistaNome();
-            const clickAttr = podeAbrir
-              ? `onclick="openEditConsulta('${c.id}');event.stopPropagation()"`
-              : `onclick="alert('Você só pode visualizar as suas próprias consultas.');event.stopPropagation()" style="cursor:not-allowed"`;
-            return `<div class="cal-appt cal-appt-${c.status}" ${clickAttr} title="${p?.nome||''}${c.profissional ? ' · ' + c.profissional : ''} · ${c.hora}">${nome}${dentistaPrimeiroNome ? ' · ' + dentistaPrimeiroNome : ''}</div>`;
+            return `<div class="cal-appt cal-appt-${c.status}" onclick="openEditConsulta('${c.id}');event.stopPropagation()" title="${p?.nome||''}${c.profissional ? ' · ' + c.profissional : ''} · ${c.hora} · ${fmtMoney(c.valor)}">${nome}${dentistaPrimeiroNome ? ' · ' + dentistaPrimeiroNome : ''}</div>`;
           }).join('');
           return `<div class="cal-cell${todayCls}" onclick="openModalAgendar('${time}','${date}')">
             ${apts}
@@ -2583,11 +2578,6 @@ function openModalAgendar(hora, date) {
 function openEditConsulta(id) {
   const c = DB.get('consultas', []).find(c => String(c.id) === String(id));
   if (!c) return;
-  // Etapa 2: dentista só pode abrir as próprias consultas
-  if (isDentista() && c.profissional !== getCurrentDentistaNome()) {
-    alert('Você só pode visualizar as suas próprias consultas.');
-    return;
-  }
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(c.paciente_id));
   document.getElementById('c-id').value = c.id;
   document.getElementById('c-paciente-search').value = p?.nome || '';
@@ -2629,6 +2619,24 @@ function openEditConsulta(id) {
       btnNF.style.display = 'none';
     }
   }
+
+  // Qualquer um da equipe pode ABRIR e VER os detalhes de qualquer
+  // consulta (inclusive de outro profissional) — mas só pode EDITAR a
+  // própria. Se não for do dentista logado (e não for o admin), trava o
+  // formulário inteiro em modo somente-leitura.
+  const somenteLeitura = isDentista() && c.profissional !== getCurrentDentistaNome();
+  document.getElementById('c-somente-leitura-msg').style.display = somenteLeitura ? 'block' : 'none';
+  ['c-paciente-search', 'c-profissional', 'c-data', 'c-hora', 'c-status', 'c-obs'].forEach(elId => {
+    const el = document.getElementById(elId);
+    if (el) el.disabled = somenteLeitura;
+  });
+  document.getElementById('c-valor').disabled = somenteLeitura || !isAdmin();
+  document.getElementById('btn-salvar-consulta').style.display = somenteLeitura ? 'none' : '';
+  document.getElementById('btn-add-proc-row').style.display = somenteLeitura ? 'none' : '';
+  document.getElementById('c-doc-dropzone').style.display = somenteLeitura ? 'none' : '';
+  const btnAssinar = document.getElementById('btn-abrir-assinatura');
+  if (btnAssinar) btnAssinar.style.display = somenteLeitura ? 'none' : '';
+
   document.getElementById('modal-consulta').classList.add('open');
 }
 
@@ -2637,17 +2645,29 @@ function clearConsultaModal() {
   const searchEl = document.getElementById('c-paciente-search');
   searchEl.value = '';
   searchEl.readOnly = false;
+  searchEl.disabled = false;
   searchEl.style.background = '';
   searchEl.style.color = '';
   document.getElementById('c-paciente-id').value = '';
   document.getElementById('c-profissional').value = '';
+  document.getElementById('c-profissional').disabled = false;
   document.getElementById('c-data').value = '';
+  document.getElementById('c-data').disabled = false;
   document.getElementById('c-hora').value = '';
+  document.getElementById('c-hora').disabled = false;
   document.getElementById('c-status').value = 'agendada';
+  document.getElementById('c-status').disabled = false;
   document.getElementById('c-valor').value = '';
   document.getElementById('c-obs').value = '';
+  document.getElementById('c-obs').disabled = false;
   document.getElementById('c-procs-list').innerHTML = '';
   document.getElementById('c-error').style.display = 'none';
+  document.getElementById('c-somente-leitura-msg').style.display = 'none';
+  document.getElementById('btn-salvar-consulta').style.display = '';
+  document.getElementById('btn-add-proc-row').style.display = '';
+  document.getElementById('c-doc-dropzone').style.display = '';
+  const btnAssinarReset = document.getElementById('btn-abrir-assinatura');
+  if (btnAssinarReset) btnAssinarReset.style.display = '';
   pendingAssinatura = null;
   _alertaOrigemId = null;
   renderSigPreview();
@@ -4222,6 +4242,17 @@ function saveConsulta() {
   const consultas = DB.get('consultas', []);
   const editId = document.getElementById('c-id').value;
 
+  // Defesa extra: mesmo que os campos já venham travados na tela, impede
+  // de vez que um dentista salve alteração numa consulta que não é dele
+  // (por exemplo, se alguém tentar forçar pelo console do navegador).
+  if (editId) {
+    const consultaAtual = consultas.find(c => String(c.id) === String(editId));
+    if (consultaAtual && isDentista() && consultaAtual.profissional !== getCurrentDentistaNome()) {
+      showModalError('Você só pode editar as suas próprias consultas.');
+      return;
+    }
+  }
+
   // Verificar bloqueio de horário
   const bloqueio = getBloqueio(DB.get('bloqueios', []), data, hora);
   if (bloqueio) { showModalError(`Horário bloqueado (${motivoBloqueioLabel(bloqueio)}). Remova o bloqueio antes de agendar.`); return; }
@@ -5035,12 +5066,14 @@ function populateProfConsulta(valorAtual) {
     + lista.map(p => `<option value="${p.nome}" ${p.nome === valorAtual ? 'selected' : ''}>${p.nome}${p.cro ? ' · CRO: ' + p.cro : ''}</option>`).join('');
   sel.disabled = false;
 
-  // Valor da consulta é protegido: só o admin vê e define. Um dentista
-  // salvando a consulta não deve nem visualizar esse campo, pra não gerar
-  // confusão (e o valor já lançado pelo admin nunca é sobrescrito).
+  // Valor da consulta: qualquer um da equipe pode VER (Agenda liberada
+  // pra ver preço de qualquer consulta), mas só o admin pode EDITAR — o
+  // campo fica visível sempre, só desabilitado pra quem não é admin.
   const valorWrap = document.getElementById('c-valor-wrap');
+  const valorInputEl = document.getElementById('c-valor');
   const valorMsg = document.getElementById('c-valor-oculto-msg');
-  if (valorWrap) valorWrap.style.display = isAdmin() ? '' : 'none';
+  if (valorWrap) valorWrap.style.display = '';
+  if (valorInputEl) valorInputEl.disabled = !isAdmin();
   if (valorMsg) valorMsg.style.display = isAdmin() ? 'none' : 'block';
 }
 
