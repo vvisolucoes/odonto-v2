@@ -1318,7 +1318,50 @@
   </div>
 </div>
 
-<!-- MODAL CONSULTA -->
+<!-- MODAL ANAMNESE -->
+<div class="modal-overlay" id="modal-anamnese">
+  <div class="modal" style="position:relative;max-width:560px">
+    <button class="modal-close" onclick="closeModal('modal-anamnese')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <div class="modal-title">Anamnese</div>
+    <div class="modal-sub">Histórico de saúde do paciente</div>
+    <div class="field">
+      <label>Doenças / condições de saúde</label>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Diabetes"> Diabetes</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Hipertensão"> Hipertensão</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema cardíaco"> Problema cardíaco</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema renal"> Problema renal</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Hepatite"> Hepatite</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema de coagulação"> Problema de coagulação</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="HIV/AIDS"> HIV/AIDS</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Osteoporose"> Osteoporose</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Epilepsia"> Epilepsia</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Asma"> Asma</label>
+      </div>
+    </div>
+    <div class="field"><label>Alergias (medicamentos, anestésicos, látex, etc.)</label><textarea id="anam-alergias" placeholder="Descreva qualquer alergia conhecida..."></textarea></div>
+    <div class="field"><label>Medicamentos em uso contínuo</label><textarea id="anam-medicamentos" placeholder="Nome dos medicamentos, se souber..."></textarea></div>
+    <div class="field-row">
+      <div class="field"><label>Já teve reação à anestesia odontológica?</label>
+        <select id="anam-reacao-anestesia" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:inherit;font-size:13px;outline:none"><option value="nao">Não</option><option value="sim">Sim</option></select>
+      </div>
+      <div class="field"><label>Fumante?</label>
+        <select id="anam-fumante" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:inherit;font-size:13px;outline:none"><option value="nao">Não</option><option value="sim">Sim</option></select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Gestante?</label>
+      <select id="anam-gestante" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:inherit;font-size:13px;outline:none"><option value="na">Não se aplica</option><option value="nao">Não</option><option value="sim">Sim</option></select>
+    </div>
+    <div class="field"><label>Cirurgias anteriores relevantes</label><input type="text" id="anam-cirurgias" placeholder="Ex: cirurgia cardíaca em 2020"></div>
+    <div class="field"><label>Observações gerais</label><textarea id="anam-obs" placeholder="Qualquer outra informação relevante..."></textarea></div>
+    <input type="hidden" id="anam-paciente-id">
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-anamnese')">Cancelar</button>
+      <button class="btn btn-teal" onclick="saveAnamnese()">Salvar Anamnese</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-consulta">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="closeModal('modal-consulta')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -4472,11 +4515,43 @@ function viewPerfil(id) {
       </div>
       <div class="profile-actions">
         <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25)" onclick="openEditPaciente('${p.id}')">Editar</button>
+        <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25)" onclick="openAnamnese('${p.id}')">📝 Anamnese</button>
         <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25)" onclick="openReceituario('${p.id}')">💊 Receituário</button>
         <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25)" onclick="openAtestado('${p.id}')">📋 Atestado</button>
         <button class="btn" style="background:var(--indigo);color:white;border:none" onclick="openAgendarPaciente('${p.id}')">Agendar</button>
       </div>
     </div>
+    ${(() => {
+      const a = p.anamnese;
+      if (!a) {
+        return `<div class="card" style="margin-bottom:16px;border-color:var(--warning-bd);background:var(--warning-bg)">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:13px;color:var(--tx-2)">⚠️ Anamnese ainda não preenchida para este paciente.</div>
+            <button class="btn btn-ghost btn-sm" onclick="openAnamnese('${p.id}')">Preencher agora</button>
+          </div>
+        </div>`;
+      }
+      const doencasAtivas = (a.doencas || []).filter(Boolean);
+      const alertaGrave = a.alergias?.trim() || a.reacaoAnestesia === 'sim' || doencasAtivas.length > 0;
+      return `<div class="card" style="margin-bottom:16px${alertaGrave ? ';border-color:var(--warning-bd)' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0">${alertaGrave ? '⚠️ ' : ''}Anamnese</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--tx-4)">Atualizada em ${a.atualizado_em ? fmtDate(a.atualizado_em.split('T')[0]) : '–'}</span>
+            <button class="btn btn-ghost btn-sm" onclick="openAnamnese('${p.id}')">Editar</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:13px">
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">DOENÇAS/CONDIÇÕES</div>${doencasAtivas.length ? doencasAtivas.join(', ') : 'Nenhuma relatada'}</div>
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">ALERGIAS</div>${a.alergias?.trim() ? `<span style="color:var(--danger);font-weight:600">${a.alergias}</span>` : 'Nenhuma relatada'}</div>
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">MEDICAMENTOS EM USO</div>${a.medicamentos?.trim() || 'Nenhum relatado'}</div>
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">REAÇÃO PRÉVIA À ANESTESIA</div>${a.reacaoAnestesia === 'sim' ? '<span style="color:var(--danger);font-weight:600">Sim</span>' : 'Não'}</div>
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">FUMANTE</div>${a.fumante === 'sim' ? 'Sim' : 'Não'}</div>
+          <div><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">GESTANTE</div>${a.gestante === 'sim' ? 'Sim' : (a.gestante === 'nao' ? 'Não' : 'Não se aplica')}</div>
+        </div>
+        ${a.obs?.trim() ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px"><div style="color:var(--tx-4);font-size:11px;font-weight:600;margin-bottom:2px">OBSERVAÇÕES GERAIS</div>${a.obs}</div>` : ''}
+      </div>`;
+    })()}
     <div class="grid-2">
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -4704,6 +4779,54 @@ function savePaciente() {
   DB.setOne('pacientes', paciente.id, paciente);
   closeModal('modal-paciente');
   renderPacientes();
+}
+
+// ════════════════════════════════════════
+// ANAMNESE
+// Fica salva no próprio cadastro do paciente (p.anamnese) — visível pra
+// qualquer um da equipe, por continuidade clínica (alergias e condições
+// de saúde importam pra qualquer dentista que for atender, não só quem
+// preencheu primeiro).
+// ════════════════════════════════════════
+function openAnamnese(pacienteId) {
+  const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacienteId));
+  if (!p) return;
+  document.getElementById('anam-paciente-id').value = pacienteId;
+  const a = p.anamnese || {};
+  document.querySelectorAll('.anam-doenca').forEach(cb => { cb.checked = (a.doencas || []).includes(cb.value); });
+  document.getElementById('anam-alergias').value = a.alergias || '';
+  document.getElementById('anam-medicamentos').value = a.medicamentos || '';
+  document.getElementById('anam-reacao-anestesia').value = a.reacaoAnestesia || 'nao';
+  document.getElementById('anam-fumante').value = a.fumante || 'nao';
+  document.getElementById('anam-gestante').value = a.gestante || 'na';
+  document.getElementById('anam-cirurgias').value = a.cirurgias || '';
+  document.getElementById('anam-obs').value = a.obs || '';
+  document.getElementById('modal-anamnese').classList.add('open');
+}
+
+function saveAnamnese() {
+  const pacienteId = document.getElementById('anam-paciente-id').value;
+  const pacientes = DB.get('pacientes', []);
+  const idx = pacientes.findIndex(p => String(p.id) === String(pacienteId));
+  if (idx === -1) return;
+
+  const doencas = Array.from(document.querySelectorAll('.anam-doenca:checked')).map(cb => cb.value);
+  const anamnese = {
+    doencas,
+    alergias: document.getElementById('anam-alergias').value.trim(),
+    medicamentos: document.getElementById('anam-medicamentos').value.trim(),
+    reacaoAnestesia: document.getElementById('anam-reacao-anestesia').value,
+    fumante: document.getElementById('anam-fumante').value,
+    gestante: document.getElementById('anam-gestante').value,
+    cirurgias: document.getElementById('anam-cirurgias').value.trim(),
+    obs: document.getElementById('anam-obs').value.trim(),
+    atualizado_em: new Date().toISOString(),
+  };
+
+  pacientes[idx] = { ...pacientes[idx], anamnese };
+  DB.setOne('pacientes', pacientes[idx].id, pacientes[idx]);
+  closeModal('modal-anamnese');
+  viewPerfil(pacienteId);
 }
 
 // MASKS
