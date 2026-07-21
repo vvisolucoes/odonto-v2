@@ -71,6 +71,7 @@
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap');
 
@@ -1075,38 +1076,67 @@
         <div class="page-title">Financeiro</div>
         <div class="page-sub">Controle de receitas e pagamentos</div>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap">
-        <select id="fin-filtro" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
-          <option value="dia">Hoje</option>
-          <option value="mes">Este mês</option>
-          <option value="semana">Esta semana</option>
-          <option value="todos">Todos</option>
-        </select>
-        <select id="fin-status" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
-          <option value="todos">Todos</option>
-          <option value="pago">Pagos</option>
-          <option value="pendente">Pendentes</option>
-        </select>
-        <select id="fin-profissional" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
-          <option value="todos">Todos os profissionais</option>
-        </select>
+      <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <select id="fin-filtro" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+            <option value="dia">Hoje</option>
+            <option value="mes">Este mês</option>
+            <option value="semana">Esta semana</option>
+            <option value="todos">Todos</option>
+          </select>
+          <select id="fin-status" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+            <option value="todos">Todos</option>
+            <option value="pago">Pagos</option>
+            <option value="pendente">Pendentes</option>
+          </select>
+          <select id="fin-profissional" onchange="renderFinanceiro()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;outline:none">
+            <option value="todos">Todos os profissionais</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="btn-toggle-graficos" onclick="toggleGraficosFinanceiro()">📊 Ver Gráficos</button>
+          <button class="btn btn-teal btn-sm" onclick="exportarRelatorioPeriodoPDF()">📄 Gerar Relatório</button>
+        </div>
       </div>
-      <div class="fin-stats" style="grid-template-columns:repeat(4,1fr)">
-        <div class="fin-stat">
-          <div class="fin-stat-label">Total Receita</div>
-          <div class="fin-stat-value fin-blue" id="fin-total">R$ 0</div>
+      <div class="stats-grid" style="margin-bottom:16px">
+        <div class="stat-card" style="cursor:default">
+          <div class="stat-icon-wrap" style="background:#EFF6FF;color:#2563EB"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+          <div class="stat-value" id="fin-total">R$ 0</div>
+          <div class="stat-label">Total Receita</div>
         </div>
-        <div class="fin-stat">
-          <div class="fin-stat-label">Recebido</div>
-          <div class="fin-stat-value fin-green" id="fin-pago">R$ 0</div>
+        <div class="stat-card" style="cursor:default">
+          <div class="stat-icon-wrap" style="background:#F0FDF4;color:#16A34A"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="stat-value" id="fin-pago">R$ 0</div>
+          <div class="stat-label">Recebido</div>
         </div>
-        <div class="fin-stat">
-          <div class="fin-stat-label">Pendente</div>
-          <div class="fin-stat-value fin-yellow" id="fin-pendente">R$ 0</div>
+        <div class="stat-card" style="cursor:default">
+          <div class="stat-icon-wrap" style="background:#FFFBEB;color:#D97706"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div class="stat-value" id="fin-pendente">R$ 0</div>
+          <div class="stat-label">Pendente</div>
         </div>
-        <div class="fin-stat">
-          <div class="fin-stat-label">Repasses no período</div>
-          <div class="fin-stat-value" style="color:var(--indigo)" id="fin-repasse-total">R$ 0</div>
+        <div class="stat-card" style="cursor:default">
+          <div class="stat-icon-wrap" style="background:#EEF2FF;color:#4F46E5"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+          <div class="stat-value" id="fin-repasse-total">R$ 0</div>
+          <div class="stat-label">Repasses no período</div>
+        </div>
+      </div>
+      <div id="fin-graficos-area" style="display:none;margin-bottom:16px">
+        <div class="grid-2">
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div class="card-title" style="margin-bottom:0">Receita ao Longo do Período</div>
+              <select id="fin-grafico-agrupamento" onchange="renderFinanceiro()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;outline:none">
+                <option value="dia">Por dia</option>
+                <option value="semana">Por semana</option>
+                <option value="mes">Por mês</option>
+              </select>
+            </div>
+            <canvas id="chart-receita-periodo" height="220"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:12px">Repasse por Dentista</div>
+            <canvas id="chart-repasse-dentista" height="220"></canvas>
+          </div>
         </div>
       </div>
       <div class="card" id="fin-resumo-dentistas-card" style="margin-bottom:16px;display:none">
@@ -1326,17 +1356,17 @@
     <div class="modal-sub">Histórico de saúde do paciente</div>
     <div class="field">
       <label>Doenças / condições de saúde</label>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Diabetes"> Diabetes</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Hipertensão"> Hipertensão</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema cardíaco"> Problema cardíaco</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema renal"> Problema renal</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Hepatite"> Hepatite</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Problema de coagulação"> Problema de coagulação</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="HIV/AIDS"> HIV/AIDS</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Osteoporose"> Osteoporose</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Epilepsia"> Epilepsia</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;color:var(--tx-2)"><input type="checkbox" class="anam-doenca" value="Asma"> Asma</label>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Diabetes" style="margin:0;flex-shrink:0"> Diabetes</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Hipertensão" style="margin:0;flex-shrink:0"> Hipertensão</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Problema cardíaco" style="margin:0;flex-shrink:0"> Problema cardíaco</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Problema renal" style="margin:0;flex-shrink:0"> Problema renal</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Hepatite" style="margin:0;flex-shrink:0"> Hepatite</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Problema de coagulação" style="margin:0;flex-shrink:0"> Problema de coagulação</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="HIV/AIDS" style="margin:0;flex-shrink:0"> HIV/AIDS</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Osteoporose" style="margin:0;flex-shrink:0"> Osteoporose</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Epilepsia" style="margin:0;flex-shrink:0"> Epilepsia</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:var(--tx-2);margin-bottom:0"><input type="checkbox" class="anam-doenca" value="Asma" style="margin:0;flex-shrink:0"> Asma</label>
       </div>
     </div>
     <div class="field"><label>Alergias (medicamentos, anestésicos, látex, etc.)</label><textarea id="anam-alergias" placeholder="Descreva qualquer alergia conhecida..."></textarea></div>
@@ -4944,6 +4974,232 @@ function saveAlertaAcao() {
 // ════════════════════════════════════════
 // FINANCEIRO
 // ════════════════════════════════════════
+// ════════════════════════════════════════
+// GRÁFICOS DO FINANCEIRO (Chart.js)
+// ════════════════════════════════════════
+let _chartReceitaPeriodo = null;
+let _chartRepassePorDentista = null;
+
+function toggleGraficosFinanceiro() {
+  const area = document.getElementById('fin-graficos-area');
+  const btn = document.getElementById('btn-toggle-graficos');
+  const abrindo = area.style.display === 'none';
+  area.style.display = abrindo ? '' : 'none';
+  btn.textContent = abrindo ? '📊 Ocultar Gráficos' : '📊 Ver Gráficos';
+  // Recalcula com o canvas já visível — Chart.js dimensiona errado se
+  // desenhar enquanto o container ainda está com display:none.
+  if (abrindo) renderFinanceiro();
+}
+
+// Agrupa consultas por dia, semana ou mês (mesma lógica usada no gráfico
+// de receita e no relatório PDF, pra garantir que os dois sempre batem).
+function agruparReceitaPorBucket(filtered, agrupamento) {
+  const porBucket = {};
+  filtered.forEach(c => {
+    let chave, label;
+    if (agrupamento === 'mes') {
+      chave = c.data.slice(0, 7);
+      const [ano, mes] = chave.split('-');
+      const nomesMeses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      label = nomesMeses[parseInt(mes,10)-1] + '/' + ano.slice(2);
+    } else if (agrupamento === 'semana') {
+      const inicioSemana = getWeekDates(c.data)[0];
+      chave = inicioSemana;
+      label = 'Sem. ' + fmtDate(inicioSemana);
+    } else {
+      chave = c.data;
+      label = fmtDate(c.data);
+    }
+    if (!porBucket[chave]) porBucket[chave] = { label, valor: 0, repasse: 0, qtd: 0 };
+    porBucket[chave].valor += (Number(c.valor) || 0);
+    porBucket[chave].repasse += calcularRepasseConsulta(c);
+    porBucket[chave].qtd += 1;
+  });
+  return Object.keys(porBucket).sort().map(k => porBucket[k]);
+}
+
+function renderGraficosFinanceiro(filtered, porDentista) {
+  if (typeof Chart === 'undefined') return; // biblioteca ainda carregando
+  const area = document.getElementById('fin-graficos-area');
+  if (!area || area.style.display === 'none') return;
+
+  // Receita agrupada por dia, semana ou mês, conforme o seletor do gráfico
+  const agrupamento = document.getElementById('fin-grafico-agrupamento')?.value || 'dia';
+  const buckets = agruparReceitaPorBucket(filtered, agrupamento);
+
+  const ctxReceita = document.getElementById('chart-receita-periodo');
+  if (ctxReceita) {
+    if (_chartReceitaPeriodo) _chartReceitaPeriodo.destroy();
+    _chartReceitaPeriodo = new Chart(ctxReceita, {
+      type: 'bar',
+      data: {
+        labels: buckets.map(b => b.label),
+        datasets: [{ label: 'Receita', data: buckets.map(b => b.valor), backgroundColor: '#4F46E5', borderRadius: 6, maxBarThickness: 42 }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.parsed.y) } } },
+        scales: { y: { ticks: { callback: v => 'R$ ' + v }, grid: { color: '#F3F4F6' } }, x: { grid: { display: false } } },
+      },
+    });
+  }
+
+  const nomes = Object.keys(porDentista);
+  const ctxRepasse = document.getElementById('chart-repasse-dentista');
+  if (ctxRepasse) {
+    if (_chartRepassePorDentista) _chartRepassePorDentista.destroy();
+    const cores = ['#4F46E5', '#16A34A', '#D97706', '#DC2626', '#2563EB', '#9333EA', '#0891B2', '#DB2777'];
+    _chartRepassePorDentista = new Chart(ctxRepasse, {
+      type: 'doughnut',
+      data: {
+        labels: nomes,
+        datasets: [{ data: nomes.map(n => porDentista[n]), backgroundColor: nomes.map((_, i) => cores[i % cores.length]) }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 11, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtMoney(ctx.parsed)}` } },
+        },
+      },
+    });
+  }
+}
+
+// Relatório PDF só do período/filtro atualmente selecionado na tela de
+// Financeiro (diferente do relatório geral de Configurações, que sempre
+// pega tudo). Segue o mesmo visual dos outros documentos do sistema.
+function exportarRelatorioPeriodoPDF() {
+  const cfg = DB.get('config', {});
+  const consultas = DB.get('consultas', []);
+  const today = getLocalDateString();
+  const mesAtual = today.slice(0, 7);
+
+  const filtro = document.getElementById('fin-filtro').value;
+  const statusFiltro = document.getElementById('fin-status').value;
+  const profFiltro = document.getElementById('fin-profissional').value;
+
+  let filtered = consultas.filter(c => COMPLETED_STATUSES.includes(c.status));
+  let periodoLabel = 'Todos os períodos';
+  if (filtro === 'dia') { filtered = filtered.filter(c => c.data === today); periodoLabel = 'Hoje (' + fmtDate(today) + ')'; }
+  else if (filtro === 'mes') { filtered = filtered.filter(c => c.data.slice(0,7) === mesAtual); periodoLabel = 'Este mês'; }
+  else if (filtro === 'semana') { filtered = filtered.filter(c => c.data >= addDays(today, -7)); periodoLabel = 'Últimos 7 dias'; }
+  else if (filtro !== 'todos') { filtered = filtered.filter(c => c.data.slice(0,7) === filtro); periodoLabel = filtro; }
+
+  if (statusFiltro === 'pago') filtered = filtered.filter(c => c.pago);
+  if (statusFiltro === 'pendente') filtered = filtered.filter(c => !c.pago);
+  if (profFiltro !== 'todos') filtered = filtered.filter(c => c.profissional === profFiltro);
+  filtered.sort((a,b) => a.data.localeCompare(b.data));
+
+  if (filtered.length === 0) { alert('Nenhum registro no período selecionado para gerar relatório.'); return; }
+
+  const total = filtered.reduce((s,c) => s + (Number(c.valor)||0), 0);
+  const pago = filtered.filter(c => c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
+  const pendente = total - pago;
+  const repasseTotal = filtered.reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 20, pageW = 210, pageH = 297;
+  let y = 20;
+  const novaFolhaSeNecessario = (espaco = 15) => { if (y + espaco > pageH - 15) { doc.addPage(); y = 20; } };
+
+  doc.setFillColor(15, 17, 23);
+  doc.rect(0, 0, pageW, 35, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text(cfg.nome_clinica || 'Clínica Odontológica', margin, 15);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  if (cfg.nome_dentista) doc.text('Dr(a). ' + cfg.nome_dentista + (cfg.cro ? ' · CRO: ' + cfg.cro : ''), margin, 22);
+
+  y = 48;
+  doc.setTextColor(99, 102, 241);
+  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('RELATÓRIO FINANCEIRO', pageW / 2, y, { align: 'center' });
+  y += 6;
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.setTextColor(140, 140, 140);
+  doc.text('Período: ' + periodoLabel + (profFiltro !== 'todos' ? ' · Profissional: ' + profFiltro : ''), pageW / 2, y, { align: 'center' });
+  y += 8;
+  doc.setDrawColor(99, 102, 241);
+  doc.line(margin, y, pageW - margin, y);
+  y += 12;
+
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+  doc.text('RESUMO', margin, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  [['Total de atendimentos', String(filtered.length)],
+   ['Total faturado', fmtMoney(total)],
+   ['Recebido', fmtMoney(pago)],
+   ['Pendente', fmtMoney(pendente)],
+   ['Repasses no período', fmtMoney(repasseTotal)]].forEach(([label, valor]) => {
+    novaFolhaSeNecessario();
+    doc.text(label, margin, y);
+    doc.setFont('helvetica', 'bold'); doc.text(valor, pageW - margin, y, { align: 'right' }); doc.setFont('helvetica', 'normal');
+    y += 6;
+  });
+  y += 8;
+
+  novaFolhaSeNecessario(15);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  const agrupamento = document.getElementById('fin-grafico-agrupamento')?.value || 'dia';
+  const labelAgrupamento = { dia: 'POR DIA', semana: 'POR SEMANA', mes: 'POR MÊS' }[agrupamento];
+  doc.text('RECEITA ' + labelAgrupamento, margin, y);
+  y += 8;
+  const buckets = agruparReceitaPorBucket(filtered, agrupamento);
+  doc.setFontSize(8); doc.setTextColor(140,140,140);
+  doc.text('PERÍODO', margin, y);
+  doc.text('ATENDIMENTOS', margin + 70, y);
+  doc.text('RECEITA', pageW - margin - 30, y, { align: 'right' });
+  doc.text('REPASSE', pageW - margin, y, { align: 'right' });
+  y += 5;
+  doc.setDrawColor(230,230,230); doc.line(margin, y, pageW - margin, y);
+  y += 5;
+  doc.setFontSize(9); doc.setTextColor(30,30,30); doc.setFont('helvetica', 'normal');
+  buckets.forEach(b => {
+    novaFolhaSeNecessario();
+    doc.text(b.label, margin, y);
+    doc.text(String(b.qtd), margin + 70, y);
+    doc.text(fmtMoney(b.valor), pageW - margin - 30, y, { align: 'right' });
+    doc.text(fmtMoney(b.repasse), pageW - margin, y, { align: 'right' });
+    y += 6;
+  });
+  y += 8;
+
+  // Repasse por dentista — mesma agregação mostrada na tela
+  const porDentistaPDF = {};
+  filtered.forEach(c => {
+    const nome = c.profissional || 'Sem profissional definido';
+    porDentistaPDF[nome] = (porDentistaPDF[nome] || 0) + calcularRepasseConsulta(c);
+  });
+  const nomesDentistasPDF = Object.keys(porDentistaPDF).sort((a,b) => porDentistaPDF[b] - porDentistaPDF[a]);
+  if (nomesDentistasPDF.length > 0) {
+    novaFolhaSeNecessario(15);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text('REPASSE POR DENTISTA', margin, y);
+    y += 8;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    nomesDentistasPDF.forEach(nome => {
+      novaFolhaSeNecessario();
+      doc.text(nome, margin, y);
+      doc.setFont('helvetica', 'bold'); doc.text(fmtMoney(porDentistaPDF[nome]), pageW - margin, y, { align: 'right' }); doc.setFont('helvetica', 'normal');
+      y += 6;
+    });
+  }
+
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(160,160,160);
+    doc.text('OdontoGestão · Página ' + i + ' de ' + totalPaginas, pageW / 2, pageH - 10, { align: 'center' });
+  }
+
+  doc.save('relatorio_financeiro_' + today + '.pdf');
+}
+
 function renderFinanceiro() {
   const today = getLocalDateString();
   const mesAtual = today.slice(0, 7); // "YYYY-MM"
@@ -5048,6 +5304,8 @@ function renderFinanceiro() {
   } else {
     resumoCard.style.display = 'none';
   }
+
+  renderGraficosFinanceiro(filtered, porDentista);
 
   const tbody = document.getElementById('fin-tbody');
   if (filtered.length === 0) {
