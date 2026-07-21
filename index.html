@@ -924,7 +924,7 @@
       <div class="nav-item" onclick="navigate('pacientes')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Pacientes</div>
       <div class="nav-item" id="nav-alertas" onclick="navigate('alertas')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>Alertas de Retorno<span class="nav-badge" id="badge-alertas">0</span></div>
       <div class="nav-item" id="nav-item-financeiro" onclick="navigate('financeiro')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span id="nav-financeiro-label">Gestão Financeira</span></div>
-      <div class="nav-item" id="nav-item-producao" style="display:none" onclick="navigate('producao')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Minha Produção</div>
+      <div class="nav-item" id="nav-item-producao" style="display:none" onclick="navigate('producao')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Meu Painel</div>
       <div class="nav-item" onclick="navigate('config')"><span class="nav-icon" style="color:inherit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>Configurações</div>
     </nav>
     <div class="sidebar-footer">
@@ -1124,7 +1124,7 @@
     <!-- MINHA PRODUÇÃO (dentista) -->
     <div class="page" id="page-producao">
       <div class="page-header">
-        <div class="page-title">Minha Produção</div>
+        <div class="page-title">Meu Painel</div>
         <div class="page-sub">Seus atendimentos e repasse</div>
       </div>
       <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
@@ -2351,8 +2351,9 @@ function saveBloqueio() {
 
   const bloqueios = DB.get('bloqueios', []);
   const id = newId();
-  bloqueios.push({ id, data_inicio: dataIni, data_fim: dataFim, hora_inicio: horaIni, hora_fim: horaFim, motivo, obs });
-  DB.set('bloqueios', bloqueios);
+  const novoBloqueio = { id, data_inicio: dataIni, data_fim: dataFim, hora_inicio: horaIni, hora_fim: horaFim, motivo, obs };
+  bloqueios.push(novoBloqueio);
+  DB.setOne('bloqueios', id, novoBloqueio);
   closeModal('modal-bloqueio');
   renderAgenda();
 }
@@ -3015,7 +3016,7 @@ function handleDocUpload(event, contexto, pacienteIdDireto) {
     const reader = new FileReader();
     reader.onload = () => {
       const documentos = DB.get('documentos', []);
-      documentos.push({
+      const novoDoc = {
         id: newId(),
         paciente_id: pacienteId,
         consulta_id: consultaId,
@@ -3024,8 +3025,9 @@ function handleDocUpload(event, contexto, pacienteIdDireto) {
         tamanho: file.size,
         dataUpload: new Date().toISOString(),
         imgData: reader.result,
-      });
-      DB.set('documentos', documentos);
+      };
+      documentos.push(novoDoc);
+      DB.setOne('documentos', novoDoc.id, novoDoc);
 
       if (contexto === 'consulta') renderDocGallery('c-doc-gallery', pacienteId, consultaId);
       else renderDocGallery('perfil-doc-gallery', pacienteId, null);
@@ -3211,13 +3213,10 @@ function getDenteData(pacienteId, num) {
 }
 
 function saveDenteData(pacienteId, denteData) {
-  const todos = DB.get('odontograma', []);
   // id composto: pacienteId_num — necessário para o shim do Firebase indexar corretamente
   const id = String(pacienteId) + '_' + denteData.num;
-  const idx = todos.findIndex(d => String(d.paciente_id) === String(pacienteId) && d.num === denteData.num);
   const entry = { ...denteData, id, paciente_id: pacienteId, updated: new Date().toISOString() };
-  if (idx !== -1) todos[idx] = entry; else todos.push(entry);
-  DB.set('odontograma', todos);
+  DB.setOne('odontograma', id, entry);
 }
 
 function toothSVG(d, size) {
@@ -3552,9 +3551,8 @@ function gerarAtestadoPDF() {
   doc.save('Atestado_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + (dataInicio||getLocalDateString()) + '.pdf');
 
   // Salva no histórico de documentos do paciente
-  const docsGerados = DB.get('docs_gerados', []);
-  docsGerados.push({ id: newId(), paciente_id: pacienteId, tipo: 'atestado', profissional: nomeDentista, data: new Date().toISOString(), resumo: `${dias} dia${dias>1?'s':''}${cid?' · CID: '+cid:''}` });
-  DB.set('docs_gerados', docsGerados);
+  const novoDocGerado = { id: newId(), paciente_id: pacienteId, tipo: 'atestado', profissional: nomeDentista, data: new Date().toISOString(), resumo: `${dias} dia${dias>1?'s':''}${cid?' · CID: '+cid:''}` };
+  DB.setOne('docs_gerados', novoDocGerado.id, novoDocGerado);
 
   closeModal('modal-atestado');
 }
@@ -3730,10 +3728,9 @@ function gerarReceituarioPDF() {
   doc.save('Receituario_' + (p?.nome||'Paciente').replace(/\s+/g,'_') + '_' + getLocalDateString() + '.pdf');
 
   // Salva no histórico de documentos do paciente
-  const docsGerados = DB.get('docs_gerados', []);
   const medNomes = _rxMedicamentos.map(m => m.nome).join(', ');
-  docsGerados.push({ id: newId(), paciente_id: pacienteId, tipo: 'receituario', profissional: nomeDentistaRx, data: new Date().toISOString(), resumo: medNomes });
-  DB.set('docs_gerados', docsGerados);
+  const novoDocReceituario = { id: newId(), paciente_id: pacienteId, tipo: 'receituario', profissional: nomeDentistaRx, data: new Date().toISOString(), resumo: medNomes };
+  DB.setOne('docs_gerados', novoDocReceituario.id, novoDocReceituario);
 
   closeModal('modal-receituario');
 }
@@ -3869,8 +3866,7 @@ async function cadastrarDentista() {
     // Salva também em profissionais da clínica
     const profissionais = DB.get('profissionais', []);
     if (!profissionais.some(p => p.email === email)) {
-      profissionais.push({ id: uid, nome, cro, email });
-      DB.set('profissionais', profissionais);
+      DB.setOne('profissionais', uid, { id: uid, nome, cro, email });
     }
 
     document.getElementById('new-dent-nome').value = '';
@@ -4184,7 +4180,7 @@ async function enviarReciboEmail() {
         consultas[idx].nf_enviada = true;
         consultas[idx].nf_envio_data = new Date().toISOString();
         consultas[idx].nf_envio_email = paciente.email;
-        DB.set('consultas', consultas);
+        DB.setOne('consultas', consultas[idx].id, consultas[idx]);
       }
       btn.textContent = '✓ Recibo Enviado';
       btn.style.background = 'var(--success-bg)';
@@ -4280,7 +4276,13 @@ function saveConsulta() {
     consulta = { id, paciente_id: pacId, data, hora, status, profissional, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
     consultas.push(consulta);
   }
-  DB.set('consultas', consultas);
+  // Grava só ESSA consulta (não a lista inteira) — se gravasse tudo,
+  // qualquer outra consulta que estivesse na memória desta sessão (por
+  // exemplo, editada por outro dentista em outra aba/sessão enquanto esta
+  // ficou aberta) seria reescrita com a versão desatualizada daqui,
+  // apagando silenciosamente a mudança de quem editou por último em outro
+  // lugar.
+  DB.setOne('consultas', consulta.id, consulta);
 
   // Valor/pagamento ficam numa coleção separada, protegida pelo Firestore
   // só pro admin — assim um dentista salvando uma consulta (ex: mudando o
@@ -4302,24 +4304,22 @@ function saveConsulta() {
 
   // Create alertas for procs
   if (COMPLETED_STATUSES.includes(status) && procs.length > 0) {
-    const alertas = DB.get('alertas', []);
     procs.forEach(pr => {
       if (pr.retorno) {
-        alertas.push({ id: newId(), paciente_id: pacId, proc_id: pr.proc_id, data_prevista: pr.retorno, status: 'pendente', obs: '' });
+        const novoAlerta = { id: newId(), paciente_id: pacId, proc_id: pr.proc_id, data_prevista: pr.retorno, status: 'pendente', obs: '' };
+        DB.setOne('alertas', novoAlerta.id, novoAlerta);
       }
     });
-    DB.set('alertas', alertas);
   }
 
   // Se esse agendamento veio do botão "Agendar" de um alerta de retorno,
   // marca esse alerta como "agendado" automaticamente — sem precisar abrir
   // "Atualizar" separadamente.
   if (_alertaOrigemId) {
-    const alertasAtuais = DB.get('alertas', []);
-    const idxAlerta = alertasAtuais.findIndex(a => String(a.id) === String(_alertaOrigemId));
-    if (idxAlerta !== -1) {
-      alertasAtuais[idxAlerta].status = 'agendado';
-      DB.set('alertas', alertasAtuais);
+    const alertaOrigem = DB.get('alertas', []).find(a => String(a.id) === String(_alertaOrigemId));
+    if (alertaOrigem) {
+      alertaOrigem.status = 'agendado';
+      DB.setOne('alertas', alertaOrigem.id, alertaOrigem);
     }
     _alertaOrigemId = null;
   }
@@ -4661,13 +4661,16 @@ function savePaciente() {
   const editId = document.getElementById('p-id').value;
   const data = { nome, cpf: document.getElementById('p-cpf').value, nasc: document.getElementById('p-nasc').value, tel, email: document.getElementById('p-email').value, endereco: document.getElementById('p-end').value, obs: document.getElementById('p-obs').value };
 
+  let paciente;
   if (editId) {
     const idx = pacientes.findIndex(p => p.id == editId);
     pacientes[idx] = { ...pacientes[idx], ...data };
+    paciente = pacientes[idx];
   } else {
-    pacientes.push({ id: newId(), ...data });
+    paciente = { id: newId(), ...data };
+    pacientes.push(paciente);
   }
-  DB.set('pacientes', pacientes);
+  DB.setOne('pacientes', paciente.id, paciente);
   closeModal('modal-paciente');
   renderPacientes();
 }
@@ -4777,7 +4780,7 @@ function saveAlertaAcao() {
   if (idx !== -1) {
     alertas[idx].status = document.getElementById('alerta-novo-status').value;
     alertas[idx].obs = document.getElementById('alerta-obs').value;
-    DB.set('alertas', alertas);
+    DB.setOne('alertas', alertas[idx].id, alertas[idx]);
   }
   closeModal('modal-alerta-acao');
   renderAlertas();
@@ -5057,7 +5060,7 @@ function renderProcList() {
 function updateProcDias(id, dias) {
   const procs = DB.get('procedimentos', []);
   const idx = procs.findIndex(p => String(p.id) === String(id));
-  if (idx !== -1) { procs[idx].dias = parseInt(dias); DB.set('procedimentos', procs); }
+  if (idx !== -1) { procs[idx].dias = parseInt(dias); DB.setOne('procedimentos', procs[idx].id, procs[idx]); }
 }
 
 function removeProcedimento(id) {
@@ -5072,8 +5075,7 @@ function addProcedimento() {
   if (!nome || !dias) { alert('Preencha nome e dias.'); return; }
   const procs = DB.get('procedimentos', []);
   const id = Math.max(0, ...procs.map(p=>p.id)) + 1;
-  procs.push({ id, nome, dias });
-  DB.set('procedimentos', procs);
+  DB.setOne('procedimentos', id, { id, nome, dias });
   document.getElementById('new-proc-name').value = '';
   document.getElementById('new-proc-days').value = '';
   renderProcList();
