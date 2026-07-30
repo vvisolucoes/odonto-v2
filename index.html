@@ -595,7 +595,7 @@
   .modal-title { font-size: 16px; font-weight: 700; color: var(--tx-1); letter-spacing: -0.3px; margin-bottom: 2px; }
   .modal-sub { color: var(--tx-4); font-size: 12.5px; margin-bottom: 22px; }
   .modal-footer {
-    display: flex; gap: 8px; justify-content: flex-end;
+    display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
     margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border);
   }
   .modal-close {
@@ -1118,6 +1118,19 @@
           <div class="stat-icon-wrap" style="background:#EEF2FF;color:#4F46E5"><svg style="width:17px;height:17px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
           <div class="stat-value" id="fin-repasse-total">R$ 0</div>
           <div class="stat-label">Repasses no período</div>
+        </div>
+      </div>
+      <div class="card" id="fin-liquido-card" style="margin-bottom:16px;background:linear-gradient(135deg,#111827,#1F2937);border:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">💰 Líquido Clínica</div>
+            <div style="font-size:30px;font-weight:700;color:white;letter-spacing:-0.6px" id="fin-liquido-clinica">R$ 0</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:4px">Já recebido, descontado o repasse devido aos dentistas sobre esse valor</div>
+          </div>
+          <div style="font-size:12.5px;color:rgba(255,255,255,0.65);text-align:right;line-height:1.9">
+            Recebido&nbsp; <span style="color:#4ADE80;font-weight:700" id="fin-liquido-recebido-detalhe">R$ 0</span><br>
+            Repasse sobre recebido&nbsp; <span style="color:#F87171;font-weight:700" id="fin-liquido-repasse-detalhe">− R$ 0</span>
+          </div>
         </div>
       </div>
       <div id="fin-graficos-area" style="display:none;margin-bottom:16px">
@@ -5097,6 +5110,8 @@ function exportarRelatorioPeriodoPDF() {
   const pago = filtered.filter(c => c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
   const pendente = total - pago;
   const repasseTotal = filtered.reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+  const repasseSobrePago = filtered.filter(c => c.pago).reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+  const liquidoClinica = pago - repasseSobrePago;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -5135,7 +5150,8 @@ function exportarRelatorioPeriodoPDF() {
    ['Total faturado', fmtMoney(total)],
    ['Recebido', fmtMoney(pago)],
    ['Pendente', fmtMoney(pendente)],
-   ['Repasses no período', fmtMoney(repasseTotal)]].forEach(([label, valor]) => {
+   ['Repasses no período', fmtMoney(repasseTotal)],
+   ['Líquido Clínica (recebido − repasse sobre o recebido)', fmtMoney(liquidoClinica)]].forEach(([label, valor]) => {
     novaFolhaSeNecessario();
     doc.text(label, margin, y);
     doc.setFont('helvetica', 'bold'); doc.text(valor, pageW - margin, y, { align: 'right' }); doc.setFont('helvetica', 'normal');
@@ -5276,11 +5292,18 @@ function renderFinanceiro() {
   const pago = filtered.filter(c => c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
   const pendente = filtered.filter(c => !c.pago).reduce((s,c) => s + (Number(c.valor)||0), 0);
   const repasseTotal = filtered.reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+  // Líquido da clínica: só faz sentido descontar repasse sobre o que já
+  // entrou de fato (não sobre o que ainda está pendente de pagamento).
+  const repasseSobrePago = filtered.filter(c => c.pago).reduce((s,c) => s + calcularRepasseConsulta(c), 0);
+  const liquidoClinica = pago - repasseSobrePago;
 
   document.getElementById('fin-total').textContent = fmtMoney(total);
   document.getElementById('fin-pago').textContent = fmtMoney(pago);
   document.getElementById('fin-pendente').textContent = fmtMoney(pendente);
   document.getElementById('fin-repasse-total').textContent = fmtMoney(repasseTotal);
+  document.getElementById('fin-liquido-clinica').textContent = fmtMoney(liquidoClinica);
+  document.getElementById('fin-liquido-recebido-detalhe').textContent = fmtMoney(pago);
+  document.getElementById('fin-liquido-repasse-detalhe').textContent = '− ' + fmtMoney(repasseSobrePago);
 
   // Resumo de repasse por dentista (só aparece com mais de um profissional
   // representado no período filtrado, pra não poluir a tela à toa)
