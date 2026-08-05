@@ -1222,7 +1222,7 @@
           <div class="config-section">
             <div class="config-section-title">Alterar Senha</div>
             <div class="field"><label>Nova Senha</label><input type="password" id="cfg-senha" placeholder="Nova senha"></div>
-            <button class="btn btn-ghost" onclick="alert('Senha atualizada!')">Atualizar Senha</button>
+            <button class="btn btn-ghost" onclick="atualizarSenhaAdmin()">Atualizar Senha</button>
           </div>
         </div>
 
@@ -1889,8 +1889,6 @@ async function migrarDadosFinanceirosLegados() {
   const pendentes = consultas.filter(c => c.valor !== undefined && !_store['financeiro']?.[c.id]);
   if (pendentes.length === 0) return;
 
-  console.log(`[migração] Movendo dados financeiros de ${pendentes.length} consulta(s) antiga(s) para a coleção "financeiro"...`);
-
   // Processa em lotes paralelos (em vez de um por um) — bem mais rápido
   // com muitas consultas, sem sobrecarregar o navegador de uma vez só.
   const TAMANHO_LOTE = 40;
@@ -1904,10 +1902,9 @@ async function migrarDadosFinanceirosLegados() {
         });
         await updateDoc(doc(db, 'clinicas', _clinicaId, 'consultas', c.id), { valor: deleteField(), pago: deleteField() });
         _store['financeiro'][c.id] = { id: c.id, valor: c.valor || 0, pago: !!c.pago };
-      } catch (e) { console.warn('[migração] Falha ao migrar consulta', c.id, e); }
+      } catch (e) { console.warn('Falha ao migrar dados financeiros da consulta', c.id, e); }
     }));
   }
-  console.log('[migração] Concluída.');
   // Se a tela do Financeiro ou o Dashboard já estiverem abertos, atualiza
   // pra refletir os dados recém-migrados.
   if (document.getElementById('page-dashboard')?.classList.contains('active')) renderDashboard();
@@ -1916,6 +1913,22 @@ async function migrarDadosFinanceirosLegados() {
 
 // Gera ID único string (usado no lugar de inteiros sequenciais)
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+// Neutraliza caracteres de HTML em texto digitado pelo usuário antes de
+// salvar (nome, observação, etc.) — o sistema mostra esses textos direto
+// na tela em várias telas diferentes, então sem isso um campo com
+// "<script>" ou similar poderia rodar código no navegador de quem
+// visualizasse depois. Aplicado no momento de SALVAR (não de exibir),
+// pra cobrir todos os lugares onde o dado aparece de uma vez só.
+function sanitizarTexto(str) {
+  if (typeof str !== 'string') return str;
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 // Seed para clínica nova (só roda se não houver dados no Firestore ainda)
 async function initData() {
@@ -1991,20 +2004,16 @@ function fmtMoney(n) {
 // assim vier negado, tenta de novo uma vez após uma pequena espera.
 async function getMembrosSnapComRetry(user, tentativa = 1) {
   const { db, collection, getDocs, query, where } = window._FB;
-  console.log(`[login] tentativa ${tentativa} — consultando membros para uid ${user.uid}`);
   try {
     await user.getIdToken(tentativa > 1);
-    const snap = await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
-    console.log(`[login] tentativa ${tentativa} — sucesso, vazio? ${snap.empty}`);
-    return snap;
+    return await getDocs(query(collection(db, 'membros'), where('uid', '==', user.uid)));
   } catch (err) {
-    console.warn(`[login] tentativa ${tentativa} — falhou:`, err.code, err.message);
     if (tentativa < 4) {
       const espera = 1200 * tentativa;
-      console.log(`[login] aguardando ${espera}ms antes de tentar de novo...`);
       await new Promise(r => setTimeout(r, espera));
       return getMembrosSnapComRetry(user, tentativa + 1);
     }
+    console.warn('Falha ao verificar permissões de login após múltiplas tentativas:', err.code, err.message);
     throw err;
   }
 }
@@ -2425,7 +2434,7 @@ function saveBloqueio() {
   const horaIni = document.getElementById('b-hora-ini').value;
   const horaFim = document.getElementById('b-hora-fim').value;
   const motivo = document.getElementById('b-motivo').value;
-  const obs = document.getElementById('b-obs').value.trim();
+  const obs = sanitizarTexto(document.getElementById('b-obs').value.trim());
   document.getElementById('b-error').style.display = 'none';
 
   if (!dataIni) { showBloqueioError('Informe a data de início.'); return; }
@@ -3452,7 +3461,7 @@ function selectDenteStatus(statusId, pacienteId, num) {
 function salvarDente() {
   const num = parseInt(document.getElementById('odonto-current-tooth').value);
   const pacienteId = document.getElementById('odonto-current-paciente').value;
-  const obs = document.getElementById('odonto-obs').value.trim();
+  const obs = sanitizarTexto(document.getElementById('odonto-obs').value.trim());
   const selectedBtn = document.querySelector('#odonto-status-grid .odonto-status-btn.selected');
   const statusIdx = selectedBtn ? Array.from(document.querySelectorAll('#odonto-status-grid .odonto-status-btn')).indexOf(selectedBtn) : 0;
   const statusId = ODONTO_STATUS[statusIdx] ? ODONTO_STATUS[statusIdx].id : 'higido';
@@ -3578,9 +3587,9 @@ function gerarAtestadoPDF() {
   const croDentista  = prof.cro  || cfg.cro           || '';
   const dataInicio = document.getElementById('atestado-data-inicio').value;
   const dataFimEl = document.getElementById('atestado-data-fim').value;
-  const cid = document.getElementById('atestado-cid').value.trim();
-  const cidDesc = document.getElementById('atestado-cid-desc').value.trim();
-  const motivo = document.getElementById('atestado-motivo').value.trim();
+  const cid = sanitizarTexto(document.getElementById('atestado-cid').value.trim());
+  const cidDesc = sanitizarTexto(document.getElementById('atestado-cid-desc').value.trim());
+  const motivo = sanitizarTexto(document.getElementById('atestado-motivo').value.trim());
   const idade = p?.nasc ? Math.floor((new Date() - new Date(p.nasc + 'T12:00:00')) / (365.25 * 86400000)) : null;
   const hoje = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' });
   const dataInicioFmt = dataInicio ? new Date(dataInicio + 'T12:00:00').toLocaleDateString('pt-BR') : hoje;
@@ -3706,9 +3715,9 @@ function addMedicamento(nome, posologia, duracao) {
 }
 
 function addMedicamentoManual() {
-  const nome = document.getElementById('rx-med-nome').value.trim();
-  const posologia = document.getElementById('rx-med-posologia').value.trim();
-  const duracao = document.getElementById('rx-med-duracao').value.trim();
+  const nome = sanitizarTexto(document.getElementById('rx-med-nome').value.trim());
+  const posologia = sanitizarTexto(document.getElementById('rx-med-posologia').value.trim());
+  const duracao = sanitizarTexto(document.getElementById('rx-med-duracao').value.trim());
   if (!nome) { alert('Informe o nome do medicamento.'); return; }
   _rxMedicamentos.push({ nome, posologia, duracao });
   document.getElementById('rx-med-nome').value = '';
@@ -3744,7 +3753,7 @@ function gerarReceituarioPDF() {
   const pacienteId = document.getElementById('rx-paciente-id').value;
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacienteId));
   const cfg = DB.get('config', {});
-  const obs = document.getElementById('rx-obs').value.trim();
+  const obs = sanitizarTexto(document.getElementById('rx-obs').value.trim());
   const idade = p?.nasc ? Math.floor((new Date() - new Date(p.nasc + 'T12:00:00')) / (365.25 * 86400000)) : null;
   const hoje = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' });
 
@@ -3933,10 +3942,10 @@ async function confirmarTrocaSenha() {
 // ════════════════════════════════════════
 
 async function cadastrarDentista() {
-  const nome  = document.getElementById('new-dent-nome').value.trim();
+  const nome  = sanitizarTexto(document.getElementById('new-dent-nome').value.trim());
   const email = document.getElementById('new-dent-email').value.trim();
   const senha = document.getElementById('new-dent-senha').value;
-  const cro   = document.getElementById('new-dent-cro').value.trim();
+  const cro   = sanitizarTexto(document.getElementById('new-dent-cro').value.trim());
   const errEl = document.getElementById('new-dent-erro');
   errEl.style.display = 'none';
 
@@ -4320,7 +4329,7 @@ function saveConsulta() {
       const procId = parseInt(sel.value);
       const proc = DB.get('procedimentos', []).find(p => String(p.id) === String(procId));
       const retorno = proc ? addDays(data, proc.dias) : null;
-      procs.push({ proc_id: procId, dente: inp?.value||'', obs: '', retorno });
+      procs.push({ proc_id: procId, dente: sanitizarTexto(inp?.value||''), obs: '', retorno });
     }
   });
 
@@ -4383,13 +4392,13 @@ function saveConsulta() {
 
   if (editId) {
     const idx = consultas.findIndex(c => c.id == editId);
-    consultas[idx] = { ...consultas[idx], paciente_id: pacId, data, hora, status, profissional, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
+    consultas[idx] = { ...consultas[idx], paciente_id: pacId, data, hora, status, profissional, obs: sanitizarTexto(document.getElementById('c-obs').value), procs, assinatura: pendingAssinatura };
     delete consultas[idx].valor;
     delete consultas[idx].pago;
     consulta = consultas[idx];
   } else {
     const id = newId();
-    consulta = { id, paciente_id: pacId, data, hora, status, profissional, obs: document.getElementById('c-obs').value, procs, assinatura: pendingAssinatura };
+    consulta = { id, paciente_id: pacId, data, hora, status, profissional, obs: sanitizarTexto(document.getElementById('c-obs').value), procs, assinatura: pendingAssinatura };
     consultas.push(consulta);
   }
   // Grava só ESSA consulta (não a lista inteira) — se gravasse tudo,
@@ -4811,13 +4820,13 @@ function openEditPaciente(id) {
 }
 
 function savePaciente() {
-  const nome = document.getElementById('p-nome').value.trim();
+  const nome = sanitizarTexto(document.getElementById('p-nome').value.trim());
   const tel = document.getElementById('p-tel').value.trim();
   if (!nome || !tel) { alert('Nome e telefone são obrigatórios.'); return; }
 
   const pacientes = DB.get('pacientes', []);
   const editId = document.getElementById('p-id').value;
-  const data = { nome, cpf: document.getElementById('p-cpf').value, nasc: document.getElementById('p-nasc').value, tel, email: document.getElementById('p-email').value, endereco: document.getElementById('p-end').value, obs: document.getElementById('p-obs').value };
+  const data = { nome, cpf: document.getElementById('p-cpf').value, nasc: document.getElementById('p-nasc').value, tel, email: document.getElementById('p-email').value, endereco: sanitizarTexto(document.getElementById('p-end').value), obs: sanitizarTexto(document.getElementById('p-obs').value) };
 
   let paciente;
   if (editId) {
@@ -4865,13 +4874,13 @@ function saveAnamnese() {
   const doencas = Array.from(document.querySelectorAll('.anam-doenca:checked')).map(cb => cb.value);
   const anamnese = {
     doencas,
-    alergias: document.getElementById('anam-alergias').value.trim(),
-    medicamentos: document.getElementById('anam-medicamentos').value.trim(),
+    alergias: sanitizarTexto(document.getElementById('anam-alergias').value.trim()),
+    medicamentos: sanitizarTexto(document.getElementById('anam-medicamentos').value.trim()),
     reacaoAnestesia: document.getElementById('anam-reacao-anestesia').value,
     fumante: document.getElementById('anam-fumante').value,
     gestante: document.getElementById('anam-gestante').value,
-    cirurgias: document.getElementById('anam-cirurgias').value.trim(),
-    obs: document.getElementById('anam-obs').value.trim(),
+    cirurgias: sanitizarTexto(document.getElementById('anam-cirurgias').value.trim()),
+    obs: sanitizarTexto(document.getElementById('anam-obs').value.trim()),
     atualizado_em: new Date().toISOString(),
   };
 
@@ -4985,7 +4994,7 @@ function saveAlertaAcao() {
   const idx = alertas.findIndex(a => String(a.id) === String(id));
   if (idx !== -1) {
     alertas[idx].status = document.getElementById('alerta-novo-status').value;
-    alertas[idx].obs = document.getElementById('alerta-obs').value;
+    alertas[idx].obs = sanitizarTexto(document.getElementById('alerta-obs').value);
     DB.setOne('alertas', alertas[idx].id, alertas[idx]);
   }
   closeModal('modal-alerta-acao');
@@ -5445,13 +5454,35 @@ function loadConfig() {
   document.getElementById('cfg-endereco').value = cfg.endereco || '';
 }
 
+// Troca a senha de quem está logado (usado pelo admin em Configurações —
+// diferente da troca obrigatória do primeiro acesso do dentista, essa é
+// voluntária, a qualquer momento).
+async function atualizarSenhaAdmin() {
+  const campoSenha = document.getElementById('cfg-senha');
+  const nova = campoSenha.value;
+  if (!nova || nova.length < 6) { alert('A nova senha deve ter pelo menos 6 caracteres.'); return; }
+
+  try {
+    const { auth, updatePassword } = window._FB;
+    await updatePassword(auth.currentUser, nova);
+    campoSenha.value = '';
+    alert('Senha atualizada com sucesso!');
+  } catch (e) {
+    if (e.code === 'auth/requires-recent-login') {
+      alert('Por segurança, o Firebase exige um login recente pra trocar a senha. Saia (botão de sair na sidebar) e entre de novo com a senha atual, depois tente novamente.');
+    } else {
+      alert('Erro ao atualizar a senha: ' + e.message);
+    }
+  }
+}
+
 function saveConfig() {
   const cfg = {
-    nome_clinica: document.getElementById('cfg-nome-clinica').value,
-    nome_dentista: document.getElementById('cfg-nome-dentista').value,
+    nome_clinica: sanitizarTexto(document.getElementById('cfg-nome-clinica').value),
+    nome_dentista: sanitizarTexto(document.getElementById('cfg-nome-dentista').value),
     telefone: document.getElementById('cfg-telefone').value,
-    cro: document.getElementById('cfg-cro').value,
-    endereco: document.getElementById('cfg-endereco').value,
+    cro: sanitizarTexto(document.getElementById('cfg-cro').value),
+    endereco: sanitizarTexto(document.getElementById('cfg-endereco').value),
   };
   DB.set('config', cfg);
   document.getElementById('sidebar-name').textContent = cfg.nome_dentista || 'Dr.';
@@ -5516,7 +5547,7 @@ function removeProcedimento(id) {
 }
 
 function addProcedimento() {
-  const nome = document.getElementById('new-proc-name').value.trim();
+  const nome = sanitizarTexto(document.getElementById('new-proc-name').value.trim());
   const dias = parseInt(document.getElementById('new-proc-days').value);
   if (!nome || !dias) { alert('Preencha nome e dias.'); return; }
   const procs = DB.get('procedimentos', []);
