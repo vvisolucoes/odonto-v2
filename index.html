@@ -12,7 +12,7 @@
 ═══════════════════════════════════════════════════ -->
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword }
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, sendPasswordResetEmail, updateEmail }
     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
   import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, query, where, orderBy, onSnapshot, Timestamp }
     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -37,7 +37,7 @@
 
   // Expõe globalmente para as funções do sistema usarem
   window._FB = { auth, db, storage,
-    signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword,
+    signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, sendPasswordResetEmail, updateEmail,
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField, query, where, orderBy, onSnapshot, Timestamp,
     ref, uploadString, getDownloadURL, deleteObject,
   };
@@ -889,12 +889,20 @@
       <label>E-mail</label>
       <input type="email" id="login-email" placeholder="seu@email.com" autocomplete="email">
     </div>
-    <div class="form-group">
+    <div class="form-group" id="login-pass-group">
       <label>Senha</label>
       <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn-login" onclick="doLogin()">Entrar</button>
+    <div style="text-align:right;margin-top:-8px;margin-bottom:14px" id="esqueci-senha-link-wrap">
+      <a href="#" onclick="abrirEsqueciSenha();return false" style="font-size:12px;color:var(--tx-4);text-decoration:none">Esqueci minha senha</a>
+    </div>
+    <button class="btn-login" id="btn-login-entrar" onclick="doLogin()">Entrar</button>
+    <button class="btn-login" id="btn-login-recuperar" style="display:none" onclick="enviarResetSenha()">Enviar link de recuperação</button>
+    <div style="text-align:center;margin-top:12px;display:none" id="voltar-login-link-wrap">
+      <a href="#" onclick="fecharEsqueciSenha();return false" style="font-size:12px;color:var(--tx-4);text-decoration:none">← Voltar ao login</a>
+    </div>
     <div id="login-error" style="display:none;margin-top:12px;font-size:12px;color:#E53E3E;background:#FEE2E2;padding:8px 12px;border-radius:8px"></div>
+    <div id="login-info" style="display:none;margin-top:12px;font-size:12px;color:#166534;background:#DCFCE7;padding:8px 12px;border-radius:8px"></div>
     <div class="login-vvi">Desenvolvido por <strong>VVI Soluções</strong> · Sistema em 48h</div>
   </div>
 </div>
@@ -1223,6 +1231,12 @@
             <div class="config-section-title">Alterar Senha</div>
             <div class="field"><label>Nova Senha</label><input type="password" id="cfg-senha" placeholder="Nova senha"></div>
             <button class="btn btn-ghost" onclick="atualizarSenhaAdmin()">Atualizar Senha</button>
+          </div>
+          <div class="config-section">
+            <div class="config-section-title">Alterar E-mail de Acesso</div>
+            <div style="font-size:11.5px;color:var(--tx-4);margin-bottom:10px">Esse é o e-mail usado pra entrar no sistema — mudar aqui não afeta os dados da clínica, só o e-mail de login.</div>
+            <div class="field"><label>Novo E-mail</label><input type="email" id="cfg-email-novo" placeholder="novoemail@clinica.com"></div>
+            <button class="btn btn-ghost" onclick="atualizarEmailAdmin()">Atualizar E-mail</button>
           </div>
         </div>
 
@@ -2086,6 +2100,60 @@ function showAppLoading(show) {
     document.body.appendChild(el);
   }
   el.style.display = show ? 'flex' : 'none';
+}
+
+// Alterna a tela de login pro modo "esqueci minha senha" — some a senha e
+// o botão Entrar, mostra só o campo de e-mail (reaproveitado) + botão de
+// enviar o link de recuperação.
+function abrirEsqueciSenha() {
+  document.getElementById('login-pass-group').style.display = 'none';
+  document.getElementById('esqueci-senha-link-wrap').style.display = 'none';
+  document.getElementById('btn-login-entrar').style.display = 'none';
+  document.getElementById('btn-login-recuperar').style.display = '';
+  document.getElementById('voltar-login-link-wrap').style.display = 'block';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('login-info').style.display = 'none';
+}
+
+function fecharEsqueciSenha() {
+  document.getElementById('login-pass-group').style.display = '';
+  document.getElementById('esqueci-senha-link-wrap').style.display = '';
+  document.getElementById('btn-login-entrar').style.display = '';
+  document.getElementById('btn-login-recuperar').style.display = 'none';
+  document.getElementById('voltar-login-link-wrap').style.display = 'none';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('login-info').style.display = 'none';
+}
+
+async function enviarResetSenha() {
+  const email = document.getElementById('login-email').value.trim();
+  const errEl = document.getElementById('login-error');
+  const infoEl = document.getElementById('login-info');
+  errEl.style.display = 'none';
+  infoEl.style.display = 'none';
+
+  if (!email) { errEl.textContent = 'Digite seu e-mail no campo acima.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('btn-login-recuperar');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+
+  try {
+    const { auth, sendPasswordResetEmail } = window._FB;
+    await sendPasswordResetEmail(auth, email);
+    infoEl.textContent = 'Link de recuperação enviado! Confira seu e-mail (inclusive a caixa de spam) e siga as instruções.';
+    infoEl.style.display = 'block';
+  } catch (e) {
+    // Por segurança, não revela se o e-mail existe ou não na base.
+    if (e.code === 'auth/invalid-email') {
+      errEl.textContent = 'E-mail inválido.';
+    } else {
+      infoEl.textContent = 'Se esse e-mail estiver cadastrado, um link de recuperação foi enviado.';
+      infoEl.style.display = 'block';
+    }
+    if (errEl.textContent === 'E-mail inválido.') errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar link de recuperação';
+  }
 }
 
 async function doLogin() {
@@ -5476,6 +5544,32 @@ async function atualizarSenhaAdmin() {
   }
 }
 
+// Troca o e-mail de LOGIN de quem está logado. Não mexe em nenhum dado
+// da clínica (pacientes, consultas, etc.) — esses ficam ligados ao UID da
+// conta, que não muda quando o e-mail muda.
+async function atualizarEmailAdmin() {
+  const campoEmail = document.getElementById('cfg-email-novo');
+  const novoEmail = campoEmail.value.trim();
+  if (!novoEmail || !novoEmail.includes('@')) { alert('Digite um e-mail válido.'); return; }
+
+  if (!confirm(`Trocar o e-mail de login para ${novoEmail}?\nVocê vai precisar usar esse e-mail novo (com a senha de sempre) da próxima vez que entrar.`)) return;
+
+  try {
+    const { auth, updateEmail } = window._FB;
+    await updateEmail(auth.currentUser, novoEmail);
+    campoEmail.value = '';
+    alert('E-mail de login atualizado com sucesso! Use o e-mail novo no próximo login.');
+  } catch (e) {
+    if (e.code === 'auth/requires-recent-login') {
+      alert('Por segurança, o Firebase exige um login recente pra trocar o e-mail. Saia (botão de sair na sidebar) e entre de novo, depois tente novamente.');
+    } else if (e.code === 'auth/email-already-in-use') {
+      alert('Esse e-mail já está sendo usado por outra conta.');
+    } else {
+      alert('Erro ao atualizar o e-mail: ' + e.message);
+    }
+  }
+}
+
 function saveConfig() {
   const cfg = {
     nome_clinica: sanitizarTexto(document.getElementById('cfg-nome-clinica').value),
@@ -5880,7 +5974,11 @@ document.addEventListener('mousedown', e => {
 });
 
 // Enter to login
-document.addEventListener('keydown', e => { if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') doLogin(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || document.getElementById('login-screen').style.display === 'none') return;
+  if (document.getElementById('btn-login-recuperar').style.display !== 'none') enviarResetSenha();
+  else doLogin();
+});
 
 // Re-render agenda on resize (mobile ↔ desktop transitions)
 window.addEventListener('resize', () => {
