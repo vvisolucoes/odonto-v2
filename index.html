@@ -3274,7 +3274,7 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
       : `<div class="doc-thumb-pdf"><svg style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h1c.6 0 1 .4 1 1v1c0 .6-.4 1-1 1H9v-3z"/><path d="M14 13h2"/><path d="M14 16h2"/></svg><div style="font-size:9px;margin-top:4px;color:#DC2626;font-weight:500">Abre em nova aba</div></div>`;
     const title = d.tipo === 'image' ? 'Clique para ampliar' : 'Clique para abrir o PDF em nova aba';
     return `<div class="doc-thumb" onclick="openDocLightbox('${d.id}')" title="${title}">
-      <button class="doc-thumb-remove" onclick="event.stopPropagation();removeDocumento('${d.id}','${targetElId}',${pacienteId},${consultaId ? `'${consultaId}'` : null})" title="Remover"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+     <button class="doc-thumb-remove" onclick="event.stopPropagation();removeDocumento('${d.id}','${targetElId}','${pacienteId}',${consultaId ? `'${consultaId}'` : null})" title="Remover">
       ${thumb}
       <div class="doc-thumb-info">
         <div class="doc-thumb-name" title="${d.nome || ''}">${d.nome || 'Documento'}</div>
@@ -4838,7 +4838,7 @@ function viewPerfil(id) {
         <div class="doc-upload-icon" style="color:var(--tx-4)"><svg style="width:22px;height:22px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></div>
         <div class="doc-upload-text">Clique ou arraste para anexar</div>
         <div class="doc-upload-hint">Imagens e PDF — fotos, raio-x, exames (não ligado a uma consulta específica)</div>
-        <input type="file" id="perfil-doc-input" accept="image/*,application/pdf" multiple style="display:none" onchange="handleDocUpload(event, 'perfil', ${p.id})">
+        <input type="file" id="perfil-doc-input" accept="image/*,application/pdf" multiple style="display:none" onchange="handleDocUpload(event, 'perfil', '${p.id}')">
       </div>
       <div id="perfil-doc-gallery" class="doc-gallery"></div>
     </div>`;
