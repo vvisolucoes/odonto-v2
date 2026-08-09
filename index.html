@@ -834,6 +834,7 @@
   .rx-suggestions { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
   .rx-suggestion-btn { padding:4px 10px; border-radius:99px; border:1px solid var(--border); background:white; font-family:inherit; font-size:11.5px; color:var(--tx-3); cursor:pointer; transition:all 0.12s; }
   .rx-suggestion-btn:hover { border-color:var(--indigo); color:var(--indigo); background:var(--indigo-light); }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 
 
@@ -3169,7 +3170,15 @@ const DOC_MAX_SIZE_MB = 5;
 // Lê arquivos selecionados, valida tipo/tamanho, converte para base64 e salva em
 // DB('documentos'). contexto = 'consulta' (usa o paciente/consulta abertos no modal)
 // ou 'perfil' (anexo geral do paciente, sem vínculo a uma consulta).
-function handleDocUpload(event, contexto, pacienteIdDireto) {
+// IMPORTANTE: os arquivos são enviados para o Firebase Storage (sem limite
+// prático de tamanho) e só a URL de download (uma string pequena) é salva
+// no Firestore. Isso corrige um bug anterior em que a foto inteira em
+// base64 era salva direto dentro do documento do Firestore — que tem um
+// limite rígido de 1MB por documento. Uma foto comum de celular (2-8MB)
+// sempre estourava esse limite: o upload parecia funcionar na hora (só
+// ficava na memória local do navegador), mas a gravação real no banco
+// falhava silenciosamente, e o documento sumia ao recarregar a página.
+async function handleDocUpload(event, contexto, pacienteIdDireto) {
   const files = Array.from(event.target.files || []);
   event.target.value = ''; // permite selecionar o mesmo arquivo de novo depois
   if (files.length === 0) return;
@@ -3185,61 +3194,76 @@ function handleDocUpload(event, contexto, pacienteIdDireto) {
     return;
   }
 
-  files.forEach(file => {
+  const targetGalleryId = contexto === 'consulta' ? 'c-doc-gallery' : 'perfil-doc-gallery';
+  const dropzoneId = contexto === 'consulta' ? 'c-doc-dropzone' : null;
+
+  for (const file of files) {
     const tipoValido = file.type.startsWith('image/') || file.type === 'application/pdf';
     if (!tipoValido) {
       alert(`"${file.name}" não é uma imagem ou PDF e não foi anexado.`);
-      return;
+      continue;
     }
     if (file.size > DOC_MAX_SIZE_MB * 1024 * 1024) {
       alert(`"${file.name}" tem mais de ${DOC_MAX_SIZE_MB}MB e não foi anexado. Tente uma versão menor ou comprimida.`);
-      return;
+      continue;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const documentos = DB.get('documentos', []);
+    // Feedback visual de "enviando" — o upload pro Storage pode levar
+    // alguns segundos, diferente do base64 local que era instantâneo.
+    const galleryEl = document.getElementById(targetGalleryId);
+    let placeholder = null;
+    if (galleryEl) {
+      placeholder = document.createElement('div');
+      placeholder.className = 'doc-thumb';
+      placeholder.innerHTML = '<div class="doc-thumb-pdf" style="background:var(--bg);color:var(--tx-4)"><svg style="width:20px;height:20px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><div style="font-size:9px;margin-top:4px">Enviando...</div></div>';
+      galleryEl.appendChild(placeholder);
+    }
+
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('não foi possível ler o arquivo'));
+        reader.readAsDataURL(file);
+      });
+
+      const docId = newId();
+      const storagePath = 'clinicas/' + _clinicaId + '/documentos/' + docId;
+      const { storage, ref, uploadString, getDownloadURL } = window._FB;
+      const sref = ref(storage, storagePath);
+      await uploadString(sref, dataUrl, 'data_url');
+      const url = await getDownloadURL(sref);
+
       const novoDoc = {
-        id: newId(),
+        id: docId,
         paciente_id: pacienteId,
         consulta_id: consultaId,
         nome: file.name,
         tipo: file.type.startsWith('image/') ? 'image' : 'pdf',
         tamanho: file.size,
         dataUpload: new Date().toISOString(),
-        imgData: reader.result,
+        url: url,
+        storagePath: storagePath,
       };
+      const documentos = DB.get('documentos', []);
       documentos.push(novoDoc);
       DB.setOne('documentos', novoDoc.id, novoDoc);
 
       if (contexto === 'consulta') renderDocGallery('c-doc-gallery', pacienteId, consultaId);
       else renderDocGallery('perfil-doc-gallery', pacienteId, null);
-
-      checkStorageUsage(contexto);
-    };
-    reader.onerror = () => alert(`Não foi possível ler o arquivo "${file.name}". Tente novamente.`);
-    reader.readAsDataURL(file);
-  });
-}
-
-// Estima o tamanho total dos documentos no cache em memória
-function checkStorageUsage(contexto) {
-  const docs = DB.get('documentos', []);
-  const totalBytes = docs.reduce((s, d) => s + (d.imgData ? d.imgData.length * 0.75 : 0), 0);
-  const totalMb = totalBytes / (1024 * 1024);
-  const WARN_MB = 50; // Firebase Storage tem limite generoso, aviso só acima de 50MB
-  if (totalMb < WARN_MB) return;
-
-  const targetId = contexto === 'consulta' ? 'c-doc-gallery' : 'perfil-doc-gallery';
-  const el = document.getElementById(targetId);
-  if (el && !el.querySelector('.doc-storage-warning')) {
-    const warn = document.createElement('div');
-    warn.className = 'doc-storage-warning';
-    warn.style.gridColumn = '1 / -1';
-    warn.textContent = `⚠️ Volume de documentos está grande (~${totalMb.toFixed(0)}MB). Considere exportar backup e remover documentos antigos.`;
-    el.appendChild(warn);
+    } catch (err) {
+      if (placeholder) placeholder.remove();
+      const msg = (err && err.code === 'storage/unauthorized')
+        ? 'Sem permissão para enviar arquivos (verifique as regras do Firebase Storage).'
+        : 'Falha ao enviar "' + file.name + '": ' + (err && err.message ? err.message : err) + '. Tente novamente.';
+      if (contexto === 'consulta') showModalError(msg); else alert(msg);
+    }
   }
 }
+
+// (checkStorageUsage removida — os arquivos agora ficam no Firebase
+// Storage, não mais acumulados como base64 no cache local/Firestore, então
+// não há mais o risco antigo de estourar a memória do navegador.)
 
 // Renderiza a galeria de documentos filtrada por paciente, e opcionalmente por
 // consulta específica (quando consultaId é informado) ou só os gerais (null
@@ -3258,7 +3282,7 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
   } else {
     // No perfil do paciente: todos os documentos dele, gerais e de qualquer consulta —
     // funciona como o histórico completo de exames/imagens daquele paciente.
-    docs = todos.filter(d => d.paciente_id === pacienteId);
+    docs = todos.filter(d => String(d.paciente_id) === String(pacienteId));
   }
 
   docs.sort((a, b) => (b.dataUpload || '').localeCompare(a.dataUpload || ''));
@@ -3271,11 +3295,11 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
   el.innerHTML = docs.map(d => {
     const dataStr = d.dataUpload ? fmtDate(d.dataUpload.split('T')[0]) : '–';
     const thumb = d.tipo === 'image'
-      ? `<img class="doc-thumb-img" src="${d.imgData || ''}" loading="lazy">`
+      ? `<img class="doc-thumb-img" src="${d.url || ''}" loading="lazy">`
       : `<div class="doc-thumb-pdf"><svg style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h1c.6 0 1 .4 1 1v1c0 .6-.4 1-1 1H9v-3z"/><path d="M14 13h2"/><path d="M14 16h2"/></svg><div style="font-size:9px;margin-top:4px;color:#DC2626;font-weight:500">Abre em nova aba</div></div>`;
     const title = d.tipo === 'image' ? 'Clique para ampliar' : 'Clique para abrir o PDF em nova aba';
     return `<div class="doc-thumb" onclick="openDocLightbox('${d.id}')" title="${title}">
-     <button class="doc-thumb-remove" onclick="event.stopPropagation();removeDocumento('${d.id}','${targetElId}','${pacienteId}',${consultaId ? `'${consultaId}'` : null})" title="Remover">
+      <button class="doc-thumb-remove" onclick="event.stopPropagation();removeDocumento('${d.id}','${targetElId}','${pacienteId}',${consultaId ? `'${consultaId}'` : null})" title="Remover"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       ${thumb}
       <div class="doc-thumb-info">
         <div class="doc-thumb-name" title="${d.nome || ''}">${d.nome || 'Documento'}</div>
@@ -3285,16 +3309,10 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
   }).join('');
 }
 
-let _currentBlobUrl = null;
 let _currentDocId = null;
 
-function blobFromBase64(base64, mime) {
-  const byteChars = atob(base64);
-  const byteNums = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
-  return new Blob([byteNums], { type: mime });
-}
-
+// Os documentos agora vivem no Firebase Storage; abrir/baixar é sempre
+// direto pela URL de download, sem precisar reconstruir nada em base64.
 function openDocLightbox(docId) {
   const doc = DB.get('documentos', []).find(d => String(d.id) === String(docId));
   if (!doc) return;
@@ -3302,22 +3320,18 @@ function openDocLightbox(docId) {
 
   const dataStr = doc.dataUpload ? fmtDate(doc.dataUpload.split('T')[0]) : '–';
 
+  if (!doc.url) {
+    alert('Não foi possível abrir este documento — o arquivo pode estar corrompido ou ainda enviando. Tente novamente em alguns segundos.');
+    return;
+  }
+
   if (doc.tipo === 'image') {
     document.getElementById('doc-lightbox-content').innerHTML =
-      `<img src="${doc.imgData || ''}"><div class="doc-lightbox-caption">${doc.nome || 'Documento'} · ${dataStr}</div>`;
+      `<img src="${doc.url}"><div class="doc-lightbox-caption">${doc.nome || 'Documento'} · ${dataStr}</div>`;
     document.getElementById('doc-lightbox-download').style.display = 'none';
     document.getElementById('doc-lightbox').classList.add('open');
   } else {
-    if (!doc.imgData || !doc.imgData.includes(',')) {
-      alert('Não foi possível abrir este documento — o arquivo pode estar corrompido. Tente remover e anexar novamente.');
-      return;
-    }
-    const base64 = doc.imgData.split(',')[1];
-    const blob = blobFromBase64(base64, 'application/pdf');
-    if (_currentBlobUrl) URL.revokeObjectURL(_currentBlobUrl);
-    _currentBlobUrl = URL.createObjectURL(blob);
-    window.open(_currentBlobUrl, '_blank');
-    setTimeout(() => { URL.revokeObjectURL(_currentBlobUrl); _currentBlobUrl = null; }, 10000);
+    window.open(doc.url, '_blank');
   }
 }
 
@@ -3325,30 +3339,33 @@ function closeDocLightbox() {
   document.getElementById('doc-lightbox').classList.remove('open');
   document.getElementById('doc-lightbox-content').innerHTML = '';
   document.getElementById('doc-lightbox-download').style.display = 'none';
-  if (_currentBlobUrl) { URL.revokeObjectURL(_currentBlobUrl); _currentBlobUrl = null; }
   _currentDocId = null;
 }
 
 function downloadDoc() {
   const doc = DB.get('documentos', []).find(d => String(d.id) === String(_currentDocId));
-  if (!doc || !doc.imgData || !doc.imgData.includes(',')) return;
-  const base64 = doc.imgData.split(',')[1];
-  const blob = blobFromBase64(base64, 'application/pdf');
-  const url = URL.createObjectURL(blob);
+  if (!doc || !doc.url) return;
   const a = document.createElement('a');
-  a.href = url;
-  a.download = doc.nome || 'documento.pdf';
+  a.href = doc.url;
+  a.download = doc.nome || 'documento';
+  a.target = '_blank';
+  a.rel = 'noopener';
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-function removeDocumento(docId, targetElId, pacienteId, consultaId) {
+async function removeDocumento(docId, targetElId, pacienteId, consultaId) {
   if (!confirm('Remover este documento? Esta ação não pode ser desfeita.')) return;
-  // Mesmo bug: DB.set() com a lista filtrada não apaga o documento antigo
-  // no Firestore, só deixa de reescrevê-lo — ele continuava existindo lá e
-  // voltava ao recarregar. DB.deleteOne() apaga de verdade.
+  const doc = DB.get('documentos', []).find(d => String(d.id) === String(docId));
+  // DB.deleteOne() apaga o registro do Firestore de verdade (não só da lista
+  // em memória). O arquivo em si, no Storage, é removido logo abaixo.
   DB.deleteOne('documentos', docId);
   renderDocGallery(targetElId, pacienteId, consultaId === 'null' ? null : consultaId);
+  if (doc && doc.storagePath) {
+    try {
+      const { storage, ref, deleteObject } = window._FB;
+      await deleteObject(ref(storage, doc.storagePath));
+    } catch (e) { console.warn('Falha ao remover arquivo do Storage:', e); }
+  }
 }
 
 // Suporte a arrastar-e-soltar na zona de upload da consulta (a do perfil também
@@ -3416,14 +3433,23 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
   // verticalmente com um transform quando for arcada superior.
   const flipAttr = flip ? ' style="transform:scaleY(-1)"' : '';
 
-  const root = '<path d="M11,27 C10.5,33 11.5,39 16,44 C20.5,39 21.5,33 21,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
+  // Contorno da coroa com leve ondulação no topo (sugerindo cúspides, como
+  // um dente de verdade) em vez de uma cúpula lisa.
+  const crownOutline = 'M6,12 C6,7 8,3 12,2 C14,1.5 15,3 16,3 C17,3 18,1.5 20,2 C24,3 26,7 26,12 C26,17 24,21 22,27 L10,27 C8,21 6,17 6,12 Z';
+
+  // Raízes bifurcadas (duas, como a maioria dos dentes reais) — puramente
+  // decorativas, mesma forma para todos os dentes do gráfico.
+  const roots = '<path d="M9,27 C7.5,32.5 8,38 11,43.5 C12,42.5 13,38.5 13,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>'
+    + '<path d="M23,27 C24.5,32.5 24,38 21,43.5 C20,42.5 19,38.5 19,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
 
   if (d.status === 'extraido' || d.status === 'ausente') {
     const fc = d.status === 'extraido' ? '#1C1F2A' : '#9CA3AF';
     return '<svg width="' + size + '" height="' + h + '" viewBox="0 0 32 46"' + flipAttr + '>'
-      + '<path d="M6,10 C6,4 11,1 16,1 C21,1 26,4 26,10 C26,16 24,20 22,27 C21.5,33 20.5,39 16,44 C11.5,39 10.5,33 10,27 C8,20 6,16 6,10 Z" fill="none" stroke="' + fc + '" stroke-width="1.4" stroke-dasharray="2,2" opacity="0.55"/>'
-      + '<line x1="7" y1="5" x2="25" y2="41" stroke="' + fc + '" stroke-width="2.4" stroke-linecap="round"/>'
-      + '<line x1="25" y1="5" x2="7" y2="41" stroke="' + fc + '" stroke-width="2.4" stroke-linecap="round"/>'
+      + '<path d="' + crownOutline + '" fill="none" stroke="' + fc + '" stroke-width="1.3" stroke-dasharray="2,2" opacity="0.5"/>'
+      + '<path d="M9,27 C7.5,32.5 8,38 11,43.5" fill="none" stroke="' + fc + '" stroke-width="1.3" stroke-dasharray="2,2" opacity="0.5"/>'
+      + '<path d="M23,27 C24.5,32.5 24,38 21,43.5" fill="none" stroke="' + fc + '" stroke-width="1.3" stroke-dasharray="2,2" opacity="0.5"/>'
+      + '<line x1="7" y1="4" x2="25" y2="41" stroke="' + fc + '" stroke-width="2.2" stroke-linecap="round"/>'
+      + '<line x1="25" y1="4" x2="7" y2="41" stroke="' + fc + '" stroke-width="2.2" stroke-linecap="round"/>'
       + '</svg>';
   }
 
@@ -3435,17 +3461,16 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
   };
 
   let extra = '';
-  if (d.status === 'implante') extra = '<circle cx="16" cy="34" r="3.5" fill="#059669" stroke="white" stroke-width="1" style="pointer-events:none"/>';
-  if (d.status === 'coroa') extra = '<path d="M6,10 C6,4 11,1 16,1 C21,1 26,4 26,10 C26,15 24.5,19 23,24 L9,24 C7.5,19 6,15 6,10 Z" fill="none" stroke="#D97706" stroke-width="2" style="pointer-events:none"/>';
-  if (d.status === 'canal') extra = '<line x1="16" y1="18" x2="16" y2="42" stroke="#7C3AED" stroke-width="2" style="pointer-events:none"/>';
+  if (d.status === 'implante') extra = '<circle cx="16" cy="35" r="3.5" fill="#059669" stroke="white" stroke-width="1" style="pointer-events:none"/>';
+  if (d.status === 'coroa') extra = '<path d="M6,12 C6,7 8,3 12,2 C14,1.5 15,3 16,3 C17,3 18,1.5 20,2 C24,3 26,7 26,12 C26,16 24.5,19.5 23,24 L9,24 C7.5,19.5 6,16 6,12 Z" fill="none" stroke="#D97706" stroke-width="2" style="pointer-events:none"/>';
+  if (d.status === 'canal') extra = '<line x1="12" y1="20" x2="11.5" y2="41" stroke="#7C3AED" stroke-width="1.6" style="pointer-events:none"/><line x1="20" y1="20" x2="20.5" y2="41" stroke="#7C3AED" stroke-width="1.6" style="pointer-events:none"/>';
 
   // Coroa — mesma divisão de faces de antes (padrão clínico de vista
-  // oclusal desdobrada), recortada dentro do contorno arredondado de um
-  // dente de verdade, com a raiz desenhada abaixo. O flip é aplicado no
-  // <svg> inteiro, então os cliques nas faces continuam funcionando normal.
+  // oclusal desdobrada), recortada dentro do novo contorno ondulado, com
+  // um leve brilho (highlight) sugerindo volume, e as duas raízes abaixo.
   return '<svg width="' + size + '" height="' + h + '" viewBox="0 0 32 46"' + flipAttr + '>'
-    + '<defs><clipPath id="crown-clip-' + pacienteId + '-' + num + '"><path d="M6,10 C6,4 11,1 16,1 C21,1 26,4 26,10 C26,16 24,20 22,27 L10,27 C8,20 6,16 6,10 Z"/></clipPath></defs>'
-    + root
+    + '<defs><clipPath id="crown-clip-' + pacienteId + '-' + num + '"><path d="' + crownOutline + '"/></clipPath></defs>'
+    + roots
     + '<g clip-path="url(#crown-clip-' + pacienteId + '-' + num + ')">'
     + '<polygon points="0,1 32,1 22,10 10,10" fill="' + faceCol('Vest.') + '" stroke="' + stroke + '" stroke-width="1"' + clickAttr('Vest.') + '><title>Vestibular</title></polygon>'
     + '<polygon points="0,1 10,10 10,22 0,27" fill="' + faceCol('Mesial') + '" stroke="' + stroke + '" stroke-width="1"' + clickAttr('Mesial') + '><title>Mesial</title></polygon>'
@@ -3453,7 +3478,8 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
     + '<polygon points="32,1 22,10 22,22 32,27" fill="' + faceCol('Distal') + '" stroke="' + stroke + '" stroke-width="1"' + clickAttr('Distal') + '><title>Distal</title></polygon>'
     + '<polygon points="10,22 22,22 32,27 0,27" fill="' + faceCol('Lingual') + '" stroke="' + stroke + '" stroke-width="1"' + clickAttr('Lingual') + '><title>Lingual</title></polygon>'
     + '</g>'
-    + '<path d="M6,10 C6,4 11,1 16,1 C21,1 26,4 26,10 C26,16 24,20 22,27 L10,27 C8,20 6,16 6,10 Z" fill="none" stroke="' + stroke + '" stroke-width="1.2" style="pointer-events:none"/>'
+    + '<path d="' + crownOutline + '" fill="none" stroke="' + stroke + '" stroke-width="1.3" style="pointer-events:none"/>'
+    + '<ellipse cx="12" cy="7" rx="4" ry="3" fill="white" opacity="0.35" style="pointer-events:none"/>'
     + extra + '</svg>';
 }
 
