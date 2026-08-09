@@ -1865,7 +1865,7 @@ async function loadAllFromFirestore() {
   // Cada coleção carrega de forma independente — se uma falhar por
   // permissão (caso do dentista tentando ler financeiro), as outras
   // continuam normalmente, em vez de travar o login inteiro.
-  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados', 'financeiro', 'repasses_config'];
+  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados', 'financeiro', 'repasses_config', 'avaliacoes'];
   await Promise.all(colecoes.map(async nome => {
     try {
       const snap = await getDocs(collection(db, 'clinicas', _clinicaId, nome));
@@ -3391,7 +3391,7 @@ let _odontoPaciente = null;
 function getDenteData(pacienteId, num) {
   const todos = DB.get('odontograma', []);
   return todos.find(d => String(d.paciente_id) === String(pacienteId) && d.num === num)
-    || { num, status: 'higido', faces: [], obs: '', historico: [] };
+    || { num, status: 'higido', faces: {}, obs: '', historico: [] };
 }
 
 function saveDenteData(pacienteId, denteData) {
@@ -3401,33 +3401,54 @@ function saveDenteData(pacienteId, denteData) {
   DB.setOne('odontograma', id, entry);
 }
 
-function toothSVG(d, size) {
+const FACE_CYCLE = [null, 'cariado', 'restaurado'];
+const FACE_COLORS = { cariado: '#DC2626', restaurado: '#2563EB' };
+
+function toothSVG(d, size, interactive, pacienteId, num) {
   size = size || 32;
-  const s = ODONTO_STATUS.find(x => x.id === (d.status || 'higido'));
-  const fc = s ? s.color : '#E8ECF0';
   const stroke = '#B0BAC5';
 
   if (d.status === 'extraido' || d.status === 'ausente') {
+    const fc = d.status === 'extraido' ? '#1C1F2A' : '#9CA3AF';
     return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 32 32"><line x1="6" y1="6" x2="26" y2="26" stroke="'+fc+'" stroke-width="3" stroke-linecap="round"/><line x1="26" y1="6" x2="6" y2="26" stroke="'+fc+'" stroke-width="3" stroke-linecap="round"/></svg>';
   }
 
-  const faceCol = function(face) {
-    if (d.status && d.status !== 'higido') return fc;
-    return (d.faces || []).includes(face) ? fc : '#E8ECF0';
+  const faces = d.faces || {};
+  const faceCol = function(face) { return faces[face] ? FACE_COLORS[faces[face]] : '#F4F6F9'; };
+  const clickAttr = function(face) {
+    if (!interactive) return '';
+    return ' onclick="event.stopPropagation();paintFace(\''+pacienteId+'\','+num+',\''+face+'\')" style="cursor:pointer"';
   };
 
   let extra = '';
-  if (d.status === 'implante') extra = '<circle cx="16" cy="16" r="4" fill="#059669" stroke="white" stroke-width="1"/>';
-  if (d.status === 'coroa') extra = '<rect x="8" y="8" width="16" height="16" rx="3" fill="none" stroke="#D97706" stroke-width="2"/>';
-  if (d.status === 'canal') extra = '<line x1="16" y1="4" x2="16" y2="28" stroke="#7C3AED" stroke-width="2"/>';
+  if (d.status === 'implante') extra = '<circle cx="16" cy="16" r="4" fill="#059669" stroke="white" stroke-width="1" style="pointer-events:none"/>';
+  if (d.status === 'coroa') extra = '<rect x="8" y="8" width="16" height="16" rx="3" fill="none" stroke="#D97706" stroke-width="2" style="pointer-events:none"/>';
+  if (d.status === 'canal') extra = '<line x1="16" y1="4" x2="16" y2="28" stroke="#7C3AED" stroke-width="2" style="pointer-events:none"/>';
 
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 32 32">'
-    + '<polygon points="0,4 32,4 22,10 10,10" fill="'+faceCol('Vest.')+'" stroke="'+stroke+'" stroke-width="1"/>'
-    + '<polygon points="0,4 10,10 10,22 0,28" fill="'+faceCol('Mesial')+'" stroke="'+stroke+'" stroke-width="1"/>'
-    + '<rect x="10" y="10" width="12" height="12" fill="'+faceCol('Oclusal')+'" stroke="'+stroke+'" stroke-width="1"/>'
-    + '<polygon points="32,4 22,10 22,22 32,28" fill="'+faceCol('Distal')+'" stroke="'+stroke+'" stroke-width="1"/>'
-    + '<polygon points="10,22 22,22 32,28 0,28" fill="'+faceCol('Lingual')+'" stroke="'+stroke+'" stroke-width="1"/>'
+    + '<polygon points="0,4 32,4 22,10 10,10" fill="'+faceCol('Vest.')+'" stroke="'+stroke+'" stroke-width="1"'+clickAttr('Vest.')+'><title>Vestibular</title></polygon>'
+    + '<polygon points="0,4 10,10 10,22 0,28" fill="'+faceCol('Mesial')+'" stroke="'+stroke+'" stroke-width="1"'+clickAttr('Mesial')+'><title>Mesial</title></polygon>'
+    + '<rect x="10" y="10" width="12" height="12" fill="'+faceCol('Oclusal')+'" stroke="'+stroke+'" stroke-width="1"'+clickAttr('Oclusal')+'><title>Oclusal</title></rect>'
+    + '<polygon points="32,4 22,10 22,22 32,28" fill="'+faceCol('Distal')+'" stroke="'+stroke+'" stroke-width="1"'+clickAttr('Distal')+'><title>Distal</title></polygon>'
+    + '<polygon points="10,22 22,22 32,28 0,28" fill="'+faceCol('Lingual')+'" stroke="'+stroke+'" stroke-width="1"'+clickAttr('Lingual')+'><title>Lingual</title></polygon>'
     + extra + '</svg>';
+}
+
+// Clique direto numa face do dente: alterna Higido -> Cariado (vermelho) ->
+// Restaurado (azul) -> Higido de novo. E a forma principal de marcar o
+// odontograma, sem precisar abrir modal - so o status geral do dente
+// (extraido, implante, coroa, canal...) continua no modal.
+function paintFace(pacienteId, num, face) {
+  const dente = getDenteData(pacienteId, num);
+  const faces = { ...(dente.faces || {}) };
+  const atual = faces[face] || null;
+  const idx = FACE_CYCLE.indexOf(atual);
+  const proximo = FACE_CYCLE[(idx + 1) % FACE_CYCLE.length];
+  if (proximo) faces[face] = proximo; else delete faces[face];
+  const historico = dente.historico || [];
+  historico.push({ status: dente.status || 'higido', faces: { ...faces }, obs: dente.obs || '', data: new Date().toISOString() });
+  saveDenteData(pacienteId, { num, status: dente.status || 'higido', faces, obs: dente.obs || '', historico });
+  renderOdontograma(pacienteId, _odontoTab);
 }
 
 function renderOdontograma(pacienteId, tab) {
@@ -3443,10 +3464,11 @@ function renderOdontograma(pacienteId, tab) {
 
   const toothEl = function(num, isLower) {
     const d = getDenteData(pacienteId, num);
-    return '<div class="odonto-tooth" onclick="openDenteModal(\''+pacienteId+'\','+num+')" title="Dente '+num+'">'
-      + (isLower ? '<div class="odonto-tooth-num">'+num+'</div>' : '')
-      + toothSVG(d, 32)
-      + (!isLower ? '<div class="odonto-tooth-num">'+num+'</div>' : '')
+    const numLabel = '<div class="odonto-tooth-num" onclick="openDenteModal(\''+pacienteId+'\','+num+')" style="cursor:pointer">'+num+'</div>';
+    return '<div class="odonto-tooth" title="Dente '+num+' - clique numa face para pintar, clique no numero para status geral">'
+      + (isLower ? numLabel : '')
+      + toothSVG(d, 42, true, pacienteId, num)
+      + (!isLower ? numLabel : '')
       + '</div>';
   };
 
@@ -3478,26 +3500,26 @@ function openDenteModal(pacienteId, num) {
   document.getElementById('odonto-current-tooth').value = num;
   document.getElementById('odonto-current-paciente').value = pacienteId;
   document.getElementById('odonto-obs').value = dente.obs || '';
-  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64);
+  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64, false);
 
-  document.getElementById('odonto-status-grid').innerHTML = ODONTO_STATUS.map(function(s) {
-    const selected = dente.status === s.id;
+  const statusWhole = ODONTO_STATUS.filter(s => ['higido','extraido','ausente','implante','coroa','canal'].includes(s.id));
+  document.getElementById('odonto-status-grid').innerHTML = statusWhole.map(function(s) {
+    const selected = (dente.status || 'higido') === s.id;
     return '<button class="odonto-status-btn' + (selected ? ' selected' : '') + '" '
       + 'style="color:' + (selected ? s.color : '#374151') + ';border-color:' + (selected ? s.color : 'var(--border)') + ';background:' + (selected ? s.color+'22' : 'white') + '" '
       + 'onclick="selectDenteStatus(\'' + s.id + '\',\'' + pacienteId + '\',' + num + ')">' + s.label + '</button>';
   }).join('');
 
-  document.getElementById('odonto-faces-grid').innerHTML = ODONTO_FACES.map(function(f) {
-    const active = (dente.faces || []).includes(f);
-    return '<button class="odonto-face-btn' + (active ? ' active' : '') + '" onclick="this.classList.toggle(\'active\')">' + f + '</button>';
-  }).join('');
+  const facesGrid = document.getElementById('odonto-faces-grid');
+  if (facesGrid) facesGrid.style.display = 'none';
 
   const hist = dente.historico || [];
   document.getElementById('odonto-dente-history').innerHTML = hist.length === 0 ? '' :
     '<div class="card-title" style="margin-top:10px;margin-bottom:6px">Histórico</div>' +
     hist.slice().reverse().map(function(h) {
-      return '<div class="odonto-history-item"><span>' + h.status
-        + (h.faces && h.faces.length ? ' · ' + h.faces.join(', ') : '')
+      const facesTxt = h.faces && typeof h.faces === 'object' && !Array.isArray(h.faces) ? Object.entries(h.faces).map(([f,s]) => f + ': ' + s).join(', ') : '';
+      return '<div class="odonto-history-item"><span>' + (h.status || 'higido')
+        + (facesTxt ? ' · ' + facesTxt : '')
         + (h.obs ? ' · ' + h.obs : '') + '</span>'
         + '<span style="color:var(--tx-4);font-size:11px">' + fmtDate(h.data.split('T')[0]) + '</span></div>';
     }).join('');
@@ -3523,21 +3545,23 @@ function selectDenteStatus(statusId, pacienteId, num) {
   });
   const dente = getDenteData(pacienteId, num);
   dente.status = statusId;
-  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64);
+  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64, false);
 }
 
 function salvarDente() {
   const num = parseInt(document.getElementById('odonto-current-tooth').value);
   const pacienteId = document.getElementById('odonto-current-paciente').value;
   const obs = sanitizarTexto(document.getElementById('odonto-obs').value.trim());
+  const statusWhole = ODONTO_STATUS.filter(s => ['higido','extraido','ausente','implante','coroa','canal'].includes(s.id));
   const selectedBtn = document.querySelector('#odonto-status-grid .odonto-status-btn.selected');
-  const statusIdx = selectedBtn ? Array.from(document.querySelectorAll('#odonto-status-grid .odonto-status-btn')).indexOf(selectedBtn) : 0;
-  const statusId = ODONTO_STATUS[statusIdx] ? ODONTO_STATUS[statusIdx].id : 'higido';
-  const faces = Array.from(document.querySelectorAll('#odonto-faces-grid .odonto-face-btn.active')).map(function(b){ return b.textContent.trim(); });
+  const btns = Array.from(document.querySelectorAll('#odonto-status-grid .odonto-status-btn'));
+  const statusIdx = selectedBtn ? btns.indexOf(selectedBtn) : 0;
+  const statusId = statusWhole[statusIdx] ? statusWhole[statusIdx].id : 'higido';
   const anterior = getDenteData(pacienteId, num);
+  const faces = anterior.faces || {};
   const historico = anterior.historico || [];
-  if (anterior.status !== statusId || JSON.stringify(anterior.faces||[]) !== JSON.stringify(faces) || anterior.obs !== obs) {
-    historico.push({ status: statusId, faces: faces, obs: obs, data: new Date().toISOString() });
+  if ((anterior.status || 'higido') !== statusId || anterior.obs !== obs) {
+    historico.push({ status: statusId, faces: { ...faces }, obs: obs, data: new Date().toISOString() });
   }
   saveDenteData(pacienteId, { num: num, status: statusId, faces: faces, obs: obs, historico: historico });
   closeModal('modal-odonto-dente');
@@ -3915,6 +3939,150 @@ function gerarReceituarioPDF() {
   DB.setOne('docs_gerados', novoDocReceituario.id, novoDocReceituario);
 
   closeModal('modal-receituario');
+}
+// ════════════════════════════════════════
+
+// ════════════════════════════════════════
+// AVALIAÇÃO / ORÇAMENTO
+// ════════════════════════════════════════
+const AVALIACAO_PROCS_ESQ = ['Exodontia', 'Rest. Resina', 'Endodontia', 'Profilaxia', 'Periodontia', 'Radiografia'];
+const AVALIACAO_PROCS_DIR = ['Implante', 'P.P.R. c/grampo', 'P.P.R. s/grampo', 'Prótese Total', 'Coroa ou Pivot', 'Bichectomia', 'Preenchimento', 'Toxina Botulínica'];
+
+let _avaliacaoAtual = null;
+let _avaliacaoPacienteId = null;
+
+function renderAvaliacao(pacienteId) {
+  _avaliacaoPacienteId = pacienteId;
+  const salvo = DB.get('avaliacoes', []).find(a => String(a.id) === String(pacienteId));
+  _avaliacaoAtual = salvo ? JSON.parse(JSON.stringify(salvo)) : { id: pacienteId, itens: {}, obs: '' };
+
+  const colEsq = document.getElementById('avaliacao-col-esq');
+  const colDir = document.getElementById('avaliacao-col-dir');
+  if (colEsq) colEsq.innerHTML = AVALIACAO_PROCS_ESQ.map(avaliacaoLinha).join('');
+  if (colDir) colDir.innerHTML = AVALIACAO_PROCS_DIR.map(avaliacaoLinha).join('');
+  const obsEl = document.getElementById('avaliacao-obs');
+  if (obsEl) obsEl.value = _avaliacaoAtual.obs || '';
+  atualizarAvaliacaoTotal();
+}
+
+function avaliacaoLinha(nome) {
+  const d = (_avaliacaoAtual.itens && _avaliacaoAtual.itens[nome]) || {};
+  const nomeAttr = nome.replace(/'/g, "\\'");
+  return `<div style="display:grid;grid-template-columns:1fr 54px 84px;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
+    <div style="color:var(--tx-2)">${nome}</div>
+    <input type="number" min="0" value="${d.quant || ''}" placeholder="Qtd" style="width:100%;padding:4px 5px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11.5px;text-align:center" oninput="atualizarAvaliacaoItem('${nomeAttr}','quant',this.value)">
+    <input type="number" min="0" step="0.01" value="${d.valor || ''}" placeholder="R$ 0,00" style="width:100%;padding:4px 5px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11.5px;text-align:right" oninput="atualizarAvaliacaoItem('${nomeAttr}','valor',this.value)">
+  </div>`;
+}
+
+function atualizarAvaliacaoItem(nome, campo, valor) {
+  if (!_avaliacaoAtual) return;
+  if (!_avaliacaoAtual.itens) _avaliacaoAtual.itens = {};
+  if (!_avaliacaoAtual.itens[nome]) _avaliacaoAtual.itens[nome] = {};
+  _avaliacaoAtual.itens[nome][campo] = campo === 'quant' ? (parseInt(valor) || 0) : (parseFloat(valor) || 0);
+  atualizarAvaliacaoTotal();
+}
+
+function atualizarAvaliacaoTotal() {
+  const el = document.getElementById('avaliacao-total');
+  if (!el || !_avaliacaoAtual) return;
+  const total = Object.values(_avaliacaoAtual.itens || {}).reduce((s, i) => s + (Number(i.valor) || 0), 0);
+  el.textContent = fmtMoney(total);
+}
+
+function salvarAvaliacao() {
+  if (!_avaliacaoAtual || !_avaliacaoPacienteId) return;
+  _avaliacaoAtual.obs = sanitizarTexto(document.getElementById('avaliacao-obs').value.trim());
+  _avaliacaoAtual.updated = new Date().toISOString();
+  DB.setOne('avaliacoes', _avaliacaoPacienteId, _avaliacaoAtual);
+  alert('Avaliação salva!');
+}
+
+function gerarAvaliacaoPDF(pacienteId) {
+  if (!_avaliacaoAtual) return;
+  const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacienteId));
+  const cfg = DB.get('config', {});
+  const itensPreenchidos = Object.entries(_avaliacaoAtual.itens || {}).filter(([, d]) => (d.quant || d.valor));
+  if (itensPreenchidos.length === 0) { alert('Preencha ao menos um procedimento antes de gerar o PDF.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 20;
+  let y = 20;
+
+  doc.setFillColor(15, 17, 23);
+  doc.rect(0, 0, 210, 35, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text(cfg.nome_clinica || 'Clínica Odontológica', margin, 15);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  if (cfg.nome_dentista) doc.text('Dr(a). ' + cfg.nome_dentista + (cfg.cro ? ' · CRO: ' + cfg.cro : ''), margin, 22);
+  if (cfg.telefone) doc.text('Tel: ' + cfg.telefone, 210 - margin, 22, { align: 'right' });
+
+  y = 50;
+  doc.setTextColor(99, 102, 241);
+  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('AVALIAÇÃO / ORÇAMENTO', 105, y, { align: 'center' });
+  y += 8;
+  doc.setDrawColor(99, 102, 241);
+  doc.line(margin, y, 210 - margin, y);
+  y += 10;
+
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('PACIENTE', margin, y); y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Nome: ' + (p?.nome || '–'), margin, y); y += 5;
+  if (p?.cpf) { doc.text('CPF: ' + p.cpf, margin, y); y += 5; }
+  doc.text('Data: ' + new Date().toLocaleDateString('pt-BR'), 210 - margin, y - (p?.cpf ? 5 : 0), { align: 'right' });
+  y += 8;
+
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, y, 210 - margin, y); y += 10;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text('PROCEDIMENTO', margin, y);
+  doc.text('QTD', margin + 110, y);
+  doc.text('VALOR', 210 - margin, y, { align: 'right' });
+  y += 5;
+  doc.setDrawColor(230, 230, 230); doc.line(margin, y, 210 - margin, y); y += 6;
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  let total = 0;
+  itensPreenchidos.forEach(([nome, d]) => {
+    doc.text(nome, margin, y);
+    doc.text(String(d.quant || '–'), margin + 110, y);
+    doc.text(fmtMoney(d.valor || 0), 210 - margin, y, { align: 'right' });
+    total += Number(d.valor) || 0;
+    y += 6;
+  });
+
+  y += 4;
+  doc.setDrawColor(220, 220, 220); doc.line(margin, y, 210 - margin, y); y += 8;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+  doc.text('TOTAL:', margin, y);
+  doc.setTextColor(99, 102, 241);
+  doc.text(fmtMoney(total), 210 - margin, y, { align: 'right' });
+  doc.setTextColor(30, 30, 30);
+  y += 12;
+
+  if (_avaliacaoAtual.obs && _avaliacaoAtual.obs.trim()) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text('OBSERVAÇÕES', margin, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    const linhas = doc.splitTextToSize(_avaliacaoAtual.obs, 170);
+    doc.text(linhas, margin, y); y += linhas.length * 5 + 6;
+  }
+
+  y = Math.max(y + 15, 250);
+  doc.setDrawColor(150, 150, 150);
+  doc.line(margin, y, 100, y);
+  y += 5;
+  doc.setFontSize(9);
+  doc.text('Declaro estar ciente e de acordo com o tratamento proposto nesta avaliação.', margin, y);
+
+  doc.save('Avaliacao_' + (p?.nome || 'Paciente').replace(/\s+/g, '_') + '_' + getLocalDateString() + '.pdf');
 }
 // ════════════════════════════════════════
 
@@ -4833,6 +5001,24 @@ function viewPerfil(id) {
       </div>
     </div>
     <div class="card" style="margin-top:16px">
+      <div class="card-title">Avaliação / Orçamento</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+        <div id="avaliacao-col-esq"></div>
+        <div id="avaliacao-col-dir" style="border-left:1px solid var(--border)"></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:var(--tx-2)">Total: <span id="avaliacao-total" style="color:var(--indigo);font-size:17px">R$ 0,00</span></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Observações</label>
+        <textarea id="avaliacao-obs" placeholder="Anotações do orçamento..."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+        <button class="btn btn-ghost btn-sm" onclick="gerarAvaliacaoPDF('${p.id}')">📄 Gerar PDF</button>
+        <button class="btn btn-teal btn-sm" onclick="salvarAvaliacao()">Salvar Avaliação</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
       <div class="card-title">Documentos e Exames do Paciente</div>
       <div class="doc-upload-zone" onclick="document.getElementById('perfil-doc-input').click()">
         <div class="doc-upload-icon" style="color:var(--tx-4)"><svg style="width:22px;height:22px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></div>
@@ -4845,6 +5031,7 @@ function viewPerfil(id) {
 
   renderDocGallery('perfil-doc-gallery', id, null);
   renderOdontograma(id, 'adulto');
+  renderAvaliacao(id);
   navigate('perfil');
 }
 
