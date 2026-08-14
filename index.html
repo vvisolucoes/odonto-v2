@@ -3163,21 +3163,57 @@ function verificarIntegridadePorConsultaId(consultaId, btnEl) {
 // ════════════════════════════════════════
 // DOCUMENTOS E EXAMES (anexos)
 // ════════════════════════════════════════
-const DOC_MAX_SIZE_MB = 5;
+// Tamanho máximo de PDF aceito (não dá pra comprimir PDF no navegador com
+// segurança, então o limite tem que ser mais rígido do que pra imagem).
+// Base64 aumenta o tamanho em ~33%, e o Firestore tem limite de 1MB por
+// documento — 500KB de PDF vira ~665KB em base64, com folga.
+const PDF_MAX_SIZE_KB = 500;
 
-// uid() substituído por newId() definido na camada de dados
+// Redimensiona e comprime uma imagem no próprio navegador antes de
+// transformar em base64 — essencial com fotos de celular (um iPhone
+// recente tira fotos de 4-12MB, muito acima do limite de 1MB por
+// documento do Firestore). Reduz pra no máximo 1600px no lado maior e
+// tenta qualidades decrescentes de JPEG até caber num tamanho seguro.
+async function comprimirImagem(file, maxDim = 1600) {
+  const dataUrlOriginal = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Não foi possível processar a imagem.'));
+    image.src = dataUrlOriginal;
+  });
+
+  let { width, height } = img;
+  if (width > maxDim || height > maxDim) {
+    if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+    else { width = Math.round(width * maxDim / height); height = maxDim; }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+  const LIMITE_BASE64 = 700 * 1024; // ~700KB de texto base64, com folga do limite de 1MB do documento
+  let resultado = canvas.toDataURL('image/jpeg', 0.75);
+  for (const qualidade of [0.6, 0.45, 0.3]) {
+    if (resultado.length <= LIMITE_BASE64) break;
+    resultado = canvas.toDataURL('image/jpeg', qualidade);
+  }
+  return resultado;
+}
 
 // Lê arquivos selecionados, valida tipo/tamanho, converte para base64 e salva em
 // DB('documentos'). contexto = 'consulta' (usa o paciente/consulta abertos no modal)
 // ou 'perfil' (anexo geral do paciente, sem vínculo a uma consulta).
-// IMPORTANTE: os arquivos são enviados para o Firebase Storage (sem limite
-// prático de tamanho) e só a URL de download (uma string pequena) é salva
-// no Firestore. Isso corrige um bug anterior em que a foto inteira em
-// base64 era salva direto dentro do documento do Firestore — que tem um
-// limite rígido de 1MB por documento. Uma foto comum de celular (2-8MB)
-// sempre estourava esse limite: o upload parecia funcionar na hora (só
-// ficava na memória local do navegador), mas a gravação real no banco
-// falhava silenciosamente, e o documento sumia ao recarregar a página.
+// Guarda o arquivo direto no Firestore (campo imgData, em base64) — sem
+// depender do Firebase Storage, que exige o plano pago (Blaze). Imagens
+// são comprimidas no navegador antes de salvar, pra caber com folga no
+// limite de 1MB por documento do Firestore.
 async function handleDocUpload(event, contexto, pacienteIdDireto) {
   const files = Array.from(event.target.files || []);
   event.target.value = ''; // permite selecionar o mesmo arquivo de novo depois
@@ -3195,7 +3231,6 @@ async function handleDocUpload(event, contexto, pacienteIdDireto) {
   }
 
   const targetGalleryId = contexto === 'consulta' ? 'c-doc-gallery' : 'perfil-doc-gallery';
-  const dropzoneId = contexto === 'consulta' ? 'c-doc-dropzone' : null;
 
   for (const file of files) {
     const tipoValido = file.type.startsWith('image/') || file.type === 'application/pdf';
@@ -3203,47 +3238,45 @@ async function handleDocUpload(event, contexto, pacienteIdDireto) {
       alert(`"${file.name}" não é uma imagem ou PDF e não foi anexado.`);
       continue;
     }
-    if (file.size > DOC_MAX_SIZE_MB * 1024 * 1024) {
-      alert(`"${file.name}" tem mais de ${DOC_MAX_SIZE_MB}MB e não foi anexado. Tente uma versão menor ou comprimida.`);
+    const ehImagem = file.type.startsWith('image/');
+    if (!ehImagem && file.size > PDF_MAX_SIZE_KB * 1024) {
+      alert(`"${file.name}" tem mais de ${PDF_MAX_SIZE_KB}KB — PDFs grandes não podem ser comprimidos. Tente uma versão menor ou escaneada em menor qualidade.`);
       continue;
     }
 
-    // Feedback visual de "enviando" — o upload pro Storage pode levar
-    // alguns segundos, diferente do base64 local que era instantâneo.
     const galleryEl = document.getElementById(targetGalleryId);
     let placeholder = null;
     if (galleryEl) {
       placeholder = document.createElement('div');
       placeholder.className = 'doc-thumb';
-      placeholder.innerHTML = '<div class="doc-thumb-pdf" style="background:var(--bg);color:var(--tx-4)"><svg style="width:20px;height:20px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><div style="font-size:9px;margin-top:4px">Enviando...</div></div>';
+      placeholder.innerHTML = `<div class="doc-thumb-pdf" style="background:var(--bg);color:var(--tx-4)"><svg style="width:20px;height:20px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><div style="font-size:9px;margin-top:4px">${ehImagem ? 'Comprimindo...' : 'Enviando...'}</div></div>`;
       galleryEl.appendChild(placeholder);
     }
 
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('não foi possível ler o arquivo'));
-        reader.readAsDataURL(file);
-      });
+      const imgData = ehImagem
+        ? await comprimirImagem(file)
+        : await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('não foi possível ler o arquivo'));
+            reader.readAsDataURL(file);
+          });
+
+      if (imgData.length > 950 * 1024) {
+        throw new Error('Mesmo após comprimir, o arquivo ficou grande demais para salvar. Tente uma foto com menos detalhe ou resolução menor.');
+      }
 
       const docId = newId();
-      const storagePath = 'clinicas/' + _clinicaId + '/documentos/' + docId;
-      const { storage, ref, uploadString, getDownloadURL } = window._FB;
-      const sref = ref(storage, storagePath);
-      await uploadString(sref, dataUrl, 'data_url');
-      const url = await getDownloadURL(sref);
-
       const novoDoc = {
         id: docId,
         paciente_id: pacienteId,
         consulta_id: consultaId,
         nome: file.name,
-        tipo: file.type.startsWith('image/') ? 'image' : 'pdf',
+        tipo: ehImagem ? 'image' : 'pdf',
         tamanho: file.size,
         dataUpload: new Date().toISOString(),
-        url: url,
-        storagePath: storagePath,
+        imgData: imgData,
       };
       const documentos = DB.get('documentos', []);
       documentos.push(novoDoc);
@@ -3253,17 +3286,11 @@ async function handleDocUpload(event, contexto, pacienteIdDireto) {
       else renderDocGallery('perfil-doc-gallery', pacienteId, null);
     } catch (err) {
       if (placeholder) placeholder.remove();
-      const msg = (err && err.code === 'storage/unauthorized')
-        ? 'Sem permissão para enviar arquivos (verifique as regras do Firebase Storage).'
-        : 'Falha ao enviar "' + file.name + '": ' + (err && err.message ? err.message : err) + '. Tente novamente.';
+      const msg = 'Falha ao anexar "' + file.name + '": ' + (err && err.message ? err.message : err);
       if (contexto === 'consulta') showModalError(msg); else alert(msg);
     }
   }
 }
-
-// (checkStorageUsage removida — os arquivos agora ficam no Firebase
-// Storage, não mais acumulados como base64 no cache local/Firestore, então
-// não há mais o risco antigo de estourar a memória do navegador.)
 
 // Renderiza a galeria de documentos filtrada por paciente, e opcionalmente por
 // consulta específica (quando consultaId é informado) ou só os gerais (null
@@ -3295,7 +3322,7 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
   el.innerHTML = docs.map(d => {
     const dataStr = d.dataUpload ? fmtDate(d.dataUpload.split('T')[0]) : '–';
     const thumb = d.tipo === 'image'
-      ? `<img class="doc-thumb-img" src="${d.url || ''}" loading="lazy">`
+      ? `<img class="doc-thumb-img" src="${d.imgData || ''}" loading="lazy">`
       : `<div class="doc-thumb-pdf"><svg style="width:24px;height:24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h1c.6 0 1 .4 1 1v1c0 .6-.4 1-1 1H9v-3z"/><path d="M14 13h2"/><path d="M14 16h2"/></svg><div style="font-size:9px;margin-top:4px;color:#DC2626;font-weight:500">Abre em nova aba</div></div>`;
     const title = d.tipo === 'image' ? 'Clique para ampliar' : 'Clique para abrir o PDF em nova aba';
     return `<div class="doc-thumb" onclick="openDocLightbox('${d.id}')" title="${title}">
@@ -3312,7 +3339,20 @@ function renderDocGallery(targetElId, pacienteId, consultaId) {
 let _currentDocId = null;
 
 // Os documentos agora vivem no Firebase Storage; abrir/baixar é sempre
-// direto pela URL de download, sem precisar reconstruir nada em base64.
+// Converte um data URI (base64) num Blob URL — mais confiável que abrir o
+// data URI direto pelo window.open (alguns navegadores bloqueiam isso por
+// segurança), tanto pra visualizar quanto pra baixar o arquivo.
+function base64ParaBlobUrl(dataUrl) {
+  const [cabecalho, base64] = dataUrl.split(',');
+  const mime = cabecalho.match(/:(.*?);/)[1];
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
+// Documentos ficam salvos como base64 (imgData) direto no Firestore — sem
+// depender do Firebase Storage, que exige o plano pago.
 function openDocLightbox(docId) {
   const doc = DB.get('documentos', []).find(d => String(d.id) === String(docId));
   if (!doc) return;
@@ -3320,18 +3360,18 @@ function openDocLightbox(docId) {
 
   const dataStr = doc.dataUpload ? fmtDate(doc.dataUpload.split('T')[0]) : '–';
 
-  if (!doc.url) {
-    alert('Não foi possível abrir este documento — o arquivo pode estar corrompido ou ainda enviando. Tente novamente em alguns segundos.');
+  if (!doc.imgData) {
+    alert('Não foi possível abrir este documento — o arquivo pode estar corrompido. Tente removê-lo e anexar novamente.');
     return;
   }
 
   if (doc.tipo === 'image') {
     document.getElementById('doc-lightbox-content').innerHTML =
-      `<img src="${doc.url}"><div class="doc-lightbox-caption">${doc.nome || 'Documento'} · ${dataStr}</div>`;
+      `<img src="${doc.imgData}"><div class="doc-lightbox-caption">${doc.nome || 'Documento'} · ${dataStr}</div>`;
     document.getElementById('doc-lightbox-download').style.display = 'none';
     document.getElementById('doc-lightbox').classList.add('open');
   } else {
-    window.open(doc.url, '_blank');
+    window.open(base64ParaBlobUrl(doc.imgData), '_blank');
   }
 }
 
@@ -3344,28 +3384,20 @@ function closeDocLightbox() {
 
 function downloadDoc() {
   const doc = DB.get('documentos', []).find(d => String(d.id) === String(_currentDocId));
-  if (!doc || !doc.url) return;
+  if (!doc || !doc.imgData) return;
   const a = document.createElement('a');
-  a.href = doc.url;
+  a.href = base64ParaBlobUrl(doc.imgData);
   a.download = doc.nome || 'documento';
-  a.target = '_blank';
-  a.rel = 'noopener';
   a.click();
 }
 
-async function removeDocumento(docId, targetElId, pacienteId, consultaId) {
+function removeDocumento(docId, targetElId, pacienteId, consultaId) {
   if (!confirm('Remover este documento? Esta ação não pode ser desfeita.')) return;
-  const doc = DB.get('documentos', []).find(d => String(d.id) === String(docId));
-  // DB.deleteOne() apaga o registro do Firestore de verdade (não só da lista
-  // em memória). O arquivo em si, no Storage, é removido logo abaixo.
+  // DB.deleteOne() apaga o registro do Firestore de verdade (não só da
+  // lista em memória) — como o arquivo vive dentro do próprio documento
+  // (base64), não tem nada além disso pra limpar.
   DB.deleteOne('documentos', docId);
   renderDocGallery(targetElId, pacienteId, consultaId === 'null' ? null : consultaId);
-  if (doc && doc.storagePath) {
-    try {
-      const { storage, ref, deleteObject } = window._FB;
-      await deleteObject(ref(storage, doc.storagePath));
-    } catch (e) { console.warn('Falha ao remover arquivo do Storage:', e); }
-  }
 }
 
 // Suporte a arrastar-e-soltar na zona de upload da consulta (a do perfil também
