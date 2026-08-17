@@ -3682,10 +3682,10 @@ function sugerirLancamentoAutomatico(statusId, pacienteId, num) {
 
   const procs = DB.get('procedimentos', []);
   const procEncontrado = procs.find(p => keywords.some(k => p.nome.toLowerCase().includes(k)));
-  if (!procEncontrado) return; // clínica não tem esse procedimento cadastrado — não tem o que sugerir
+  if (!procEncontrado) return; // clínica não tem esse procedimento cadastrado — não tem o que lançar
 
-  // Não sugere de novo se esse dente já tem um lançamento desse mesmo
-  // procedimento (evita ficar perguntando toda vez que reabre o modal)
+  // Não lança de novo se esse dente já tem um lançamento desse mesmo
+  // procedimento (evita duplicar toda vez que reabre o modal)
   const jaExiste = DB.get('tratamentos', []).some(t =>
     String(t.paciente_id) === String(pacienteId) &&
     String(t.dente) === String(num) &&
@@ -3693,10 +3693,7 @@ function sugerirLancamentoAutomatico(statusId, pacienteId, num) {
   );
   if (jaExiste) return;
 
-  const statusLabel = (ODONTO_STATUS.find(s => s.id === statusId) || {}).label || statusId;
-  if (confirm('Detectei que você marcou "' + statusLabel + '" nesse dente.\nQuer lançar "' + procEncontrado.nome + '" também no Plano de Tratamento (valor fica em R$ 0,00, editável depois)?')) {
-    adicionarTratamentoRapido(procEncontrado.id);
-  }
+  adicionarTratamentoRapido(procEncontrado.id);
 }
 
 function selectDenteStatus(statusId, pacienteId, num) {
@@ -3862,6 +3859,7 @@ function renderPlanoTratamento(pacienteId) {
         <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:var(--tx-4);text-transform:uppercase;border-bottom:1px solid var(--border)">Procedimento</th>
         <th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:var(--tx-4);text-transform:uppercase;border-bottom:1px solid var(--border)">Valor</th>
         <th style="text-align:center;padding:6px 8px;font-size:10px;font-weight:700;color:var(--tx-4);text-transform:uppercase;border-bottom:1px solid var(--border)">Status</th>
+        <th style="text-align:center;padding:6px 8px;font-size:10px;font-weight:700;color:var(--tx-4);text-transform:uppercase;border-bottom:1px solid var(--border)"></th>
       </tr></thead>
       <tbody>
         ${itens.map(t => {
@@ -3871,7 +3869,14 @@ function renderPlanoTratamento(pacienteId) {
             <td style="padding:8px;font-size:12px;color:var(--tx-2)">${t.dente}</td>
             <td style="padding:8px;font-size:12px;color:var(--tx-2)">${t.proc_nome}</td>
             <td style="padding:8px;font-size:12.5px;font-weight:600;color:var(--tx-1);text-align:right">${fmtMoney(t.valor)}</td>
-            <td style="padding:8px;text-align:center"><span style="font-size:10.5px;font-weight:600;color:${st.cor};background:${st.bg};border:1px solid ${st.bd};padding:2px 8px;border-radius:99px">${st.label}</span></td>
+            <td style="padding:8px;text-align:center">
+              <select style="padding:3px 6px;border:1px solid ${st.bd};border-radius:6px;font-family:inherit;font-size:10.5px;font-weight:600;color:${st.cor};background:${st.bg}" onchange="atualizarTratamento('${t.id}','status',this.value)">
+                ${Object.keys(TRAT_STATUS).map(k => `<option value="${k}" ${k===t.status?'selected':''}>${TRAT_STATUS[k].label}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:8px;text-align:center">
+              <button style="background:none;border:none;cursor:pointer;color:var(--tx-4);padding:2px" onclick="removerTratamento('${t.id}')" title="Remover"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </td>
           </tr>`;
         }).join('')}
       </tbody>
