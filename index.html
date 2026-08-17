@@ -3667,6 +3667,38 @@ function openDenteModal(pacienteId, num) {
   document.getElementById('modal-odonto-dente').classList.add('open');
 }
 
+// Status que representam um procedimento de verdade (não só uma condição
+// visual) — ao marcar um desses, vale sugerir já lançar o mesmo item no
+// Plano de Tratamento, pra não esquecer o valor/cobrança.
+const STATUS_PROCEDIMENTO_KEYWORDS = {
+  canal: ['canal', 'endodontia'],
+  coroa: ['coroa'],
+  implante: ['implante'],
+};
+
+function sugerirLancamentoAutomatico(statusId, pacienteId, num) {
+  const keywords = STATUS_PROCEDIMENTO_KEYWORDS[statusId];
+  if (!keywords) return;
+
+  const procs = DB.get('procedimentos', []);
+  const procEncontrado = procs.find(p => keywords.some(k => p.nome.toLowerCase().includes(k)));
+  if (!procEncontrado) return; // clínica não tem esse procedimento cadastrado — não tem o que sugerir
+
+  // Não sugere de novo se esse dente já tem um lançamento desse mesmo
+  // procedimento (evita ficar perguntando toda vez que reabre o modal)
+  const jaExiste = DB.get('tratamentos', []).some(t =>
+    String(t.paciente_id) === String(pacienteId) &&
+    String(t.dente) === String(num) &&
+    String(t.proc_id) === String(procEncontrado.id)
+  );
+  if (jaExiste) return;
+
+  const statusLabel = (ODONTO_STATUS.find(s => s.id === statusId) || {}).label || statusId;
+  if (confirm('Detectei que você marcou "' + statusLabel + '" nesse dente.\nQuer lançar "' + procEncontrado.nome + '" também no Plano de Tratamento (valor fica em R$ 0,00, editável depois)?')) {
+    adicionarTratamentoRapido(procEncontrado.id);
+  }
+}
+
 function selectDenteStatus(statusId, pacienteId, num) {
   const btns = document.querySelectorAll('#odonto-status-grid .odonto-status-btn');
   btns.forEach(function(b, i) {
@@ -3686,6 +3718,7 @@ function selectDenteStatus(statusId, pacienteId, num) {
   _denteEmEdicaoStatus = statusId;
   document.getElementById('odonto-modal-preview').innerHTML =
     toothSVG({ status: _denteEmEdicaoStatus, faces: _denteEmEdicaoFaces }, 96, true, null, num, false, true);
+  sugerirLancamentoAutomatico(statusId, pacienteId, num);
 }
 
 function salvarDente() {
