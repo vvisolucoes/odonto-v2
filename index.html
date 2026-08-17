@@ -804,13 +804,13 @@
   .odonto-tab { padding:6px 16px; font-size:12.5px; font-weight:500; cursor:pointer; border:none; background:white; color:var(--tx-3); font-family:inherit; transition:all 0.12s; }
   .odonto-tab.active { background:var(--indigo); color:white; font-weight:600; }
   .odonto-tab:not(.active):hover { background:var(--bg); }
-  .odonto-row { display:flex; gap:6px; align-items:flex-end; justify-content:space-between; flex-wrap:nowrap; padding-bottom:4px; }
+  .odonto-row { display:flex; gap:4px; align-items:flex-end; justify-content:center; flex-wrap:nowrap; padding-bottom:4px; }
   .odonto-row.lower { align-items:flex-start; }
-  .odonto-tooth { display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; flex:1 1 0; min-width:0; }
+  .odonto-tooth { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; flex:0 1 44px; min-width:0; max-width:44px; }
   .odonto-tooth svg { width:100%; height:auto; display:block; }
   .odonto-tooth:hover svg { transform:scale(1.08); transition:transform 0.1s; }
-  .odonto-tooth-num { font-size:11px; color:var(--tx-4); font-weight:700; text-align:center; }
-  .odonto-divider { width:2px; min-width:2px; background:var(--border); margin:0 6px; align-self:stretch; border-radius:1px; }
+  .odonto-tooth-num { font-size:9.5px; color:var(--tx-4); font-weight:700; text-align:center; }
+  .odonto-divider { width:2px; min-width:2px; background:var(--border); margin:0 5px; align-self:stretch; border-radius:1px; }
   .odonto-legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
   .odonto-legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--tx-3); }
   .odonto-legend-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
@@ -1959,14 +1959,20 @@ async function initData() {
 
   DB.set('config', { nome_clinica: 'Clínica Odontológica', nome_dentista: 'Dr. Admin', telefone: '', cro: '', endereco: '' });
   DB.set('procedimentos', [
-    { id: '1', nome: 'Restauração', dias: 180 },
-    { id: '2', nome: 'Limpeza/Profilaxia', dias: 180 },
-    { id: '3', nome: 'Canal (Endodontia)', dias: 365 },
-    { id: '4', nome: 'Extração', dias: 30 },
-    { id: '5', nome: 'Clareamento', dias: 365 },
-    { id: '6', nome: 'Ortodontia (manutenção)', dias: 45 },
-    { id: '7', nome: 'Implante (revisão)', dias: 365 },
-    { id: '8', nome: 'Prótese (revisão)', dias: 365 },
+    { id: '1', nome: 'Exodontia', dias: 30 },
+    { id: '2', nome: 'Rest. Resina', dias: 180 },
+    { id: '3', nome: 'Endodontia', dias: 365 },
+    { id: '4', nome: 'Profilaxia', dias: 180 },
+    { id: '5', nome: 'Periodontia', dias: 90 },
+    { id: '6', nome: 'Radiografia', dias: 365 },
+    { id: '7', nome: 'Implante', dias: 180 },
+    { id: '8', nome: 'P.P.R. c/grampo', dias: 365 },
+    { id: '9', nome: 'P.P.R. s/grampo', dias: 365 },
+    { id: '10', nome: 'Prótese Total', dias: 365 },
+    { id: '11', nome: 'Coroa ou Pivot', dias: 365 },
+    { id: '12', nome: 'Bichectomia', dias: 180 },
+    { id: '13', nome: 'Preenchimento', dias: 180 },
+    { id: '14', nome: 'Toxina Botulínica', dias: 120 },
   ]);
   DB.set('pacientes', []);
   DB.set('consultas', []);
@@ -3840,84 +3846,103 @@ function renderPlanoTratamento(pacienteId) {
 }
 
 // PDF do plano de tratamento — resumo pronto pra apresentar/entregar ao paciente
+// PDF no mesmo formato exato da "Ficha Pacientes" física da clínica:
+// tabela em paisagem com Data | Dente | Tratamento Realizado | Valor R$ |
+// Soma R$ (total acumulado) | Assinatura Dentista | Assinatura Paciente —
+// essas duas últimas ficam em branco, para assinatura à mão depois de
+// impresso, exatamente como na ficha de papel.
 function gerarPlanoTratamentoPDF(pacienteId) {
   const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacienteId));
   const cfg = DB.get('config', {});
   const itens = DB.get('tratamentos', [])
     .filter(t => String(t.paciente_id) === String(pacienteId))
-    .sort((a, b) => (a.dente||'').localeCompare(b.dente||'', undefined, {numeric:true}));
+    .sort((a, b) => (a.data || '').localeCompare(b.data || '')); // cronológico, pra "Soma" acumular certo
 
   if (itens.length === 0) { alert('Nenhum procedimento lançado ainda pra esse paciente.'); return; }
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 20, pageW = 210, pageH = 297;
-  let y = 20;
-  const novaFolhaSeNecessario = (espaco = 15) => { if (y + espaco > pageH - 15) { doc.addPage(); y = 20; } };
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const margin = 20, pageW = 297, pageH = 210;
+  let y = 15;
 
-  doc.setFillColor(15, 17, 23);
-  doc.rect(0, 0, pageW, 35, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-  doc.text(cfg.nome_clinica || 'Clínica Odontológica', margin, 15);
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.setTextColor(180, 180, 180);
-  if (cfg.nome_dentista) doc.text('Dr(a). ' + cfg.nome_dentista + (cfg.cro ? ' · CRO: ' + cfg.cro : ''), margin, 22);
-
-  y = 48;
-  doc.setTextColor(99, 102, 241);
-  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-  doc.text('PLANO DE TRATAMENTO', pageW / 2, y, { align: 'center' });
-  y += 6;
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.setTextColor(140, 140, 140);
-  doc.text('Paciente: ' + (p?.nome || '–'), pageW / 2, y, { align: 'center' });
-  y += 8;
-  doc.setDrawColor(99, 102, 241);
-  doc.line(margin, y, pageW - margin, y);
-  y += 12;
-
-  doc.setFontSize(8.5); doc.setTextColor(140,140,140); doc.setFont('helvetica', 'bold');
-  doc.text('DATA', margin, y);
-  doc.text('DENTE', margin + 28, y);
-  doc.text('PROCEDIMENTO', margin + 48, y);
-  doc.text('VALOR', pageW - margin - 28, y, { align: 'right' });
-  doc.text('STATUS', pageW - margin, y, { align: 'right' });
+  // Cabeçalho da clínica (nome, endereço, telefone, e-mail) — igual ao
+  // topo da ficha física.
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(15,17,23);
+  doc.text(cfg.nome_clinica || 'Clínica Odontológica', pageW / 2, y, { align: 'center' });
   y += 5;
-  doc.setDrawColor(230,230,230); doc.line(margin, y, pageW - margin, y);
-  y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100,100,100);
+  const linhaContato = [cfg.endereco, cfg.telefone ? 'Tel: ' + cfg.telefone : '', cfg.email ? 'E-mail: ' + cfg.email : ''].filter(Boolean).join('  ·  ');
+  if (linhaContato) { doc.text(linhaContato, pageW / 2, y, { align: 'center' }); y += 6; } else { y += 3; }
 
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
-  let totalProposto = 0, totalRealizado = 0;
-  itens.forEach(t => {
-    novaFolhaSeNecessario();
-    const st = TRAT_STATUS[t.status] || TRAT_STATUS.proposto;
-    doc.text(fmtDate(t.data.split('T')[0]), margin, y);
-    doc.text(String(t.dente), margin + 28, y);
-    doc.text(t.proc_nome, margin + 48, y);
-    doc.text(fmtMoney(t.valor), pageW - margin - 28, y, { align: 'right' });
-    doc.text(st.label, pageW - margin, y, { align: 'right' });
-    y += 6;
-    if (t.status === 'proposto') totalProposto += Number(t.valor) || 0;
-    if (t.status === 'realizado') totalRealizado += Number(t.valor) || 0;
-  });
-
-  y += 6;
-  novaFolhaSeNecessario(20);
-  doc.setDrawColor(99, 102, 241); doc.line(margin, y, pageW - margin, y);
+  doc.setDrawColor(180,180,180); doc.line(margin, y, pageW - margin, y);
   y += 8;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-  doc.text('Total proposto:', margin, y);
-  doc.text(fmtMoney(totalProposto), pageW - margin, y, { align: 'right' });
-  y += 6;
-  doc.text('Total já realizado:', margin, y);
-  doc.text(fmtMoney(totalRealizado), pageW - margin, y, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30,30,30);
+  doc.text('Ficha do Paciente: ' + (p?.nome || '–'), margin, y);
+  y += 10;
+
+  // Colunas — mesma ordem e nomes da ficha física
+  const col = { data: 20, dente: 16, trat: 90, valor: 25, soma: 25, assD: 40, assP: 41 };
+  const xData = margin;
+  const xDente = xData + col.data;
+  const xTrat = xDente + col.dente;
+  const xValor = xTrat + col.trat;
+  const xSoma = xValor + col.valor;
+  const xAssD = xSoma + col.soma;
+  const xAssP = xAssD + col.assD;
+  const xFim = xAssP + col.assP;
+  const alturaLinha = 11;
+
+  const desenharCabecalhoTabela = () => {
+    doc.setFillColor(238, 242, 255);
+    doc.rect(margin, y, xFim - margin, 8, 'F');
+    doc.setDrawColor(180,180,180);
+    doc.rect(margin, y, xFim - margin, 8);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60,60,90);
+    doc.text('Data', xData + 2, y + 5.5);
+    doc.text('Dente', xDente + 2, y + 5.5);
+    doc.text('Tratamento Realizado', xTrat + 2, y + 5.5);
+    doc.text('Valor R$', xValor + 2, y + 5.5);
+    doc.text('Soma R$', xSoma + 2, y + 5.5);
+    doc.text('Assinatura dentista', xAssD + 2, y + 5.5);
+    doc.text('Assinatura Paciente', xAssP + 2, y + 5.5);
+    y += 8;
+  };
+
+  desenharCabecalhoTabela();
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30,30,30);
+  let soma = 0;
+  itens.forEach(t => {
+    if (y + alturaLinha > pageH - 15) {
+      doc.addPage('a4', 'landscape');
+      y = 15;
+      desenharCabecalhoTabela();
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30,30,30);
+    }
+    soma += Number(t.valor) || 0;
+
+    // Linhas verticais e horizontais da célula (grade, igual à ficha impressa)
+    doc.setDrawColor(210,210,210);
+    doc.rect(xData, y, xFim - xData, alturaLinha);
+    [xDente, xTrat, xValor, xSoma, xAssD, xAssP].forEach(x => doc.line(x, y, x, y + alturaLinha));
+
+    const meioY = y + alturaLinha / 2 + 1.5;
+    doc.text(fmtDate(t.data.split('T')[0]), xData + 2, meioY);
+    doc.text(String(t.dente), xDente + 2, meioY);
+    doc.text(t.proc_nome.length > 48 ? t.proc_nome.slice(0,46) + '…' : t.proc_nome, xTrat + 2, meioY);
+    doc.text(fmtMoney(t.valor).replace('R$', '').trim(), xValor + col.valor - 3, meioY, { align: 'right' });
+    doc.text(fmtMoney(soma).replace('R$', '').trim(), xSoma + col.soma - 3, meioY, { align: 'right' });
+    // Assinatura dentista / paciente ficam em branco de propósito — são
+    // pra assinar à mão depois de impresso, igual na ficha de papel.
+    y += alturaLinha;
+  });
 
   const totalPaginas = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPaginas; i++) {
     doc.setPage(i);
-    doc.setFontSize(8); doc.setTextColor(160,160,160);
-    doc.text('OdontoGestão · Página ' + i + ' de ' + totalPaginas, pageW / 2, pageH - 10, { align: 'center' });
+    doc.setFontSize(7.5); doc.setTextColor(160,160,160);
+    doc.text('OdontoGestão · Página ' + i + ' de ' + totalPaginas, pageW / 2, pageH - 8, { align: 'center' });
   }
 
   doc.save('plano_tratamento_' + (p?.nome||'paciente').replace(/\s+/g,'_') + '.pdf');
