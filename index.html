@@ -1758,12 +1758,10 @@
   <div class="modal" style="width:480px;position:relative">
     <button class="modal-close" onclick="closeModal('modal-odonto-dente')">✕</button>
     <div class="modal-title" id="odonto-modal-title">Dente</div>
-    <div class="modal-sub">Selecione o status e as faces afetadas</div>
+    <div class="modal-sub">Clique numa face da imagem pra marcar (cárie/restauração), ou escolha um status geral abaixo</div>
     <div style="display:flex;justify-content:center;margin:12px 0" id="odonto-modal-preview"></div>
     <div class="card-title" style="margin-bottom:8px">Status do Dente</div>
     <div class="odonto-status-grid" id="odonto-status-grid"></div>
-    <div class="card-title" style="margin-bottom:8px">Faces Afetadas</div>
-    <div class="odonto-faces-grid" id="odonto-faces-grid"></div>
     <div class="field">
       <label>Observação</label>
       <input type="text" id="odonto-obs" placeholder="Ex: restauração classe II, cárie incipiente...">
@@ -1873,7 +1871,7 @@ async function loadAllFromFirestore() {
   // Cada coleção carrega de forma independente — se uma falhar por
   // permissão (caso do dentista tentando ler financeiro), as outras
   // continuam normalmente, em vez de travar o login inteiro.
-  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados', 'financeiro', 'repasses_config', 'avaliacoes', 'tratamentos'];
+  const colecoes = ['config', 'procedimentos', 'pacientes', 'consultas', 'alertas', 'bloqueios', 'documentos', 'odontograma', 'profissionais', 'docs_gerados', 'financeiro', 'repasses_config', 'tratamentos'];
   await Promise.all(colecoes.map(async nome => {
     try {
       const snap = await getDocs(collection(db, 'clinicas', _clinicaId, nome));
@@ -3460,7 +3458,48 @@ function saveDenteData(pacienteId, denteData) {
 const FACE_CYCLE = [null, 'cariado', 'restaurado'];
 const FACE_COLORS = { cariado: '#DC2626', restaurado: '#2563EB' };
 
-function toothSVG(d, size, interactive, pacienteId, num, flip) {
+// Identifica o tipo do dente a partir do número (notação FDI: primeiro
+// dígito é o quadrante, segundo é a posição — 1/2 incisivo, 3 canino,
+// 4/5 pré-molar (só em dente permanente), 6/7/8 molar. Nos dentes de
+// leite (quadrantes 5-8) não existe pré-molar — a posição 4/5 já é molar
+// decíduo.
+function getTipoDente(num) {
+  const posicao = num % 10;
+  const decíduo = num >= 50;
+  if (posicao === 1 || posicao === 2) return 'incisivo';
+  if (posicao === 3) return 'canino';
+  if (decíduo) return 'molar'; // decíduo pula direto de canino pra molar
+  if (posicao === 4 || posicao === 5) return 'premolar';
+  return 'molar';
+}
+
+// Um contorno de coroa por tipo — a mesma lógica de recorte (clip-path)
+// usada pras faces (Vestibular/Mesial/Oclusal/Distal/Lingual) continua
+// funcionando igual, só muda a silhueta por fora.
+const CROWN_OUTLINES = {
+  incisivo: 'M9,10 C9,6 10,3 13,2 L19,2 C22,3 23,6 23,10 C23,15 22,20 20,27 L12,27 C10,20 9,15 9,10 Z',
+  canino:   'M8,13 C8,8 9,4 11,3 C12,2.5 13,4 14,2 C15,0 17,0 18,2 C19,4 20,2.5 21,3 C23,4 24,8 24,13 C24,17 23,21 21,27 L11,27 C9,21 8,17 8,13 Z',
+  premolar: 'M7,11 C7,7 8,3 11,2 C12.5,1.5 13.5,3 16,3 C18.5,3 19.5,1.5 21,2 C24,3 25,7 25,11 C25,16 23,21 21,27 L11,27 C9,21 7,16 7,11 Z',
+  molar:    'M4,10 C4,6 6,2 9,2 C11,2 11,4 13,3 C15,2 17,2 19,3 C21,4 21,2 23,2 C26,2 28,6 28,10 C28,15 26,20 24,27 L8,27 C6,20 4,15 4,10 Z',
+};
+
+// Incisivo e canino têm raiz única; pré-molar e molar têm raízes
+// bifurcadas (molar um pouco mais espalhada, sugerindo 2-3 raízes).
+function getRootsSVG(tipo, rootFill, stroke) {
+  if (tipo === 'incisivo' || tipo === 'canino') {
+    return '<path d="M11,27 C10,33 10.5,39 16,43.5 C21.5,39 22,33 21,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
+  }
+  if (tipo === 'molar') {
+    return '<path d="M7,27 C5,33 5.5,38 9,43 C10,42 11,38 11,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>'
+      + '<path d="M25,27 C27,33 26.5,38 23,43 C22,42 21,38 21,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>'
+      + '<path d="M14,27 C13.5,33 14,38 16,43 C18,38 18.5,33 18,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
+  }
+  // pré-molar: as duas raízes que já existiam
+  return '<path d="M9,27 C7.5,32.5 8,38 11,43.5 C12,42.5 13,38.5 13,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>'
+    + '<path d="M23,27 C24.5,32.5 24,38 21,43.5 C20,42.5 19,38.5 19,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
+}
+
+function toothSVG(d, size, interactive, pacienteId, num, flip, modoModal) {
   size = size || 32;
   const h = Math.round(size * 46 / 32);
   const stroke = '#B0BAC5';
@@ -3471,14 +3510,15 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
   // verticalmente com um transform quando for arcada superior.
   const flipAttr = flip ? ' style="transform:scaleY(-1)"' : '';
 
-  // Contorno da coroa com leve ondulação no topo (sugerindo cúspides, como
-  // um dente de verdade) em vez de uma cúpula lisa.
-  const crownOutline = 'M6,12 C6,7 8,3 12,2 C14,1.5 15,3 16,3 C17,3 18,1.5 20,2 C24,3 26,7 26,12 C26,17 24,21 22,27 L10,27 C8,21 6,17 6,12 Z';
+  // Contorno da coroa muda de acordo com o tipo do dente (incisivo,
+  // canino, pré-molar, molar) — mais fiel ao formato real, em vez de um
+  // desenho genérico igual pra qualquer dente.
+  const tipoDente = getTipoDente(num);
+  const crownOutline = CROWN_OUTLINES[tipoDente];
 
-  // Raízes bifurcadas (duas, como a maioria dos dentes reais) — puramente
-  // decorativas, mesma forma para todos os dentes do gráfico.
-  const roots = '<path d="M9,27 C7.5,32.5 8,38 11,43.5 C12,42.5 13,38.5 13,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>'
-    + '<path d="M23,27 C24.5,32.5 24,38 21,43.5 C20,42.5 19,38.5 19,27 Z" fill="' + rootFill + '" stroke="' + stroke + '" stroke-width="1" style="pointer-events:none"/>';
+  // Raízes — única pra incisivo/canino, bifurcada/multi-raiz pra
+  // pré-molar/molar (ver getRootsSVG).
+  const roots = getRootsSVG(tipoDente, rootFill, stroke);
 
   if (d.status === 'extraido' || d.status === 'ausente') {
     const fc = d.status === 'extraido' ? '#1C1F2A' : '#9CA3AF';
@@ -3495,7 +3535,8 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
   const faceCol = function(face) { return faces[face] ? FACE_COLORS[faces[face]] : '#FFFFFF'; };
   const clickAttr = function(face) {
     if (!interactive) return '';
-    return ' onclick="event.stopPropagation();paintFace(\'' + pacienteId + '\',' + num + ',\'' + face + '\')" style="cursor:pointer"';
+    if (modoModal) return ' onclick="event.stopPropagation();paintFaceModal(\'' + face + '\')" style="cursor:pointer"';
+    return ' onclick="event.stopPropagation();openDenteModal(\'' + pacienteId + '\',' + num + ')" style="cursor:pointer"';
   };
 
   let extra = '';
@@ -3521,21 +3562,23 @@ function toothSVG(d, size, interactive, pacienteId, num, flip) {
     + extra + '</svg>';
 }
 
-// Clique direto numa face do dente: alterna Higido -> Cariado (vermelho) ->
-// Restaurado (azul) -> Higido de novo. E a forma principal de marcar o
-// odontograma, sem precisar abrir modal - so o status geral do dente
-// (extraido, implante, coroa, canal...) continua no modal.
-function paintFace(pacienteId, num, face) {
-  const dente = getDenteData(pacienteId, num);
-  const faces = { ...(dente.faces || {}) };
-  const atual = faces[face] || null;
+// Estado temporário de edição das faces, enquanto o modal do dente está
+// aberto — só é gravado de verdade quando clica em "Salvar" (mesmo
+// padrão que o Status do Dente já usava).
+let _denteEmEdicaoFaces = {};
+let _denteEmEdicaoStatus = 'higido';
+
+// Clique numa face DENTRO do modal do dente: alterna Higido -> Cariado
+// (vermelho) -> Restaurado (azul) -> Higido de novo, na pré-visualização
+// grande. Só grava no banco quando o usuário clica em Salvar.
+function paintFaceModal(face) {
+  const atual = _denteEmEdicaoFaces[face] || null;
   const idx = FACE_CYCLE.indexOf(atual);
   const proximo = FACE_CYCLE[(idx + 1) % FACE_CYCLE.length];
-  if (proximo) faces[face] = proximo; else delete faces[face];
-  const historico = dente.historico || [];
-  historico.push({ status: dente.status || 'higido', faces: { ...faces }, obs: dente.obs || '', data: new Date().toISOString() });
-  saveDenteData(pacienteId, { num, status: dente.status || 'higido', faces, obs: dente.obs || '', historico });
-  renderOdontograma(pacienteId, _odontoTab);
+  if (proximo) _denteEmEdicaoFaces[face] = proximo; else delete _denteEmEdicaoFaces[face];
+  const num = parseInt(document.getElementById('odonto-current-tooth').value);
+  document.getElementById('odonto-modal-preview').innerHTML =
+    toothSVG({ status: _denteEmEdicaoStatus, faces: _denteEmEdicaoFaces }, 96, true, null, num, false, true);
 }
 
 function renderOdontograma(pacienteId, tab) {
@@ -3554,7 +3597,7 @@ function renderOdontograma(pacienteId, tab) {
     const numLabel = '<div class="odonto-tooth-num" onclick="openDenteModal(\''+pacienteId+'\','+num+')" style="cursor:pointer">'+num+'</div>';
     // Raiz para cima nos dentes superiores, raiz para baixo nos inferiores -
     // como o dentista enxerga a boca do paciente de frente.
-    return '<div class="odonto-tooth" title="Dente '+num+' - clique numa face para pintar, clique no numero para status geral">'
+    return '<div class="odonto-tooth" title="Dente '+num+' — clique para abrir e editar">'
       + (isLower ? numLabel : '')
       + toothSVG(d, 64, true, pacienteId, num, !isLower)
       + (!isLower ? numLabel : '')
@@ -3589,7 +3632,11 @@ function openDenteModal(pacienteId, num) {
   document.getElementById('odonto-current-tooth').value = num;
   document.getElementById('odonto-current-paciente').value = pacienteId;
   document.getElementById('odonto-obs').value = dente.obs || '';
-  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64, false);
+
+  _denteEmEdicaoFaces = { ...(dente.faces || {}) };
+  _denteEmEdicaoStatus = dente.status || 'higido';
+  document.getElementById('odonto-modal-preview').innerHTML =
+    toothSVG({ status: _denteEmEdicaoStatus, faces: _denteEmEdicaoFaces }, 96, true, null, num, false, true);
 
   const statusWhole = ODONTO_STATUS.filter(s => ['higido','extraido','ausente','implante','coroa','canal'].includes(s.id));
   document.getElementById('odonto-status-grid').innerHTML = statusWhole.map(function(s) {
@@ -3598,9 +3645,6 @@ function openDenteModal(pacienteId, num) {
       + 'style="color:' + (selected ? s.color : '#374151') + ';border-color:' + (selected ? s.color : 'var(--border)') + ';background:' + (selected ? s.color+'22' : 'white') + '" '
       + 'onclick="selectDenteStatus(\'' + s.id + '\',\'' + pacienteId + '\',' + num + ')">' + s.label + '</button>';
   }).join('');
-
-  const facesGrid = document.getElementById('odonto-faces-grid');
-  if (facesGrid) facesGrid.style.display = 'none';
 
   const hist = dente.historico || [];
   document.getElementById('odonto-dente-history').innerHTML = hist.length === 0 ? '' :
@@ -3633,9 +3677,9 @@ function selectDenteStatus(statusId, pacienteId, num) {
       b.style.color = '#374151';
     }
   });
-  const dente = getDenteData(pacienteId, num);
-  dente.status = statusId;
-  document.getElementById('odonto-modal-preview').innerHTML = toothSVG(dente, 64, false);
+  _denteEmEdicaoStatus = statusId;
+  document.getElementById('odonto-modal-preview').innerHTML =
+    toothSVG({ status: _denteEmEdicaoStatus, faces: _denteEmEdicaoFaces }, 96, true, null, num, false, true);
 }
 
 function salvarDente() {
@@ -3648,9 +3692,9 @@ function salvarDente() {
   const statusIdx = selectedBtn ? btns.indexOf(selectedBtn) : 0;
   const statusId = statusWhole[statusIdx] ? statusWhole[statusIdx].id : 'higido';
   const anterior = getDenteData(pacienteId, num);
-  const faces = anterior.faces || {};
+  const faces = { ..._denteEmEdicaoFaces };
   const historico = anterior.historico || [];
-  if ((anterior.status || 'higido') !== statusId || anterior.obs !== obs) {
+  if ((anterior.status || 'higido') !== statusId || anterior.obs !== obs || JSON.stringify(anterior.faces || {}) !== JSON.stringify(faces)) {
     historico.push({ status: statusId, faces: { ...faces }, obs: obs, data: new Date().toISOString() });
   }
   saveDenteData(pacienteId, { num: num, status: statusId, faces: faces, obs: obs, historico: historico });
@@ -4253,149 +4297,6 @@ function gerarReceituarioPDF() {
 }
 // ════════════════════════════════════════
 
-// ════════════════════════════════════════
-// AVALIAÇÃO / ORÇAMENTO
-// ════════════════════════════════════════
-const AVALIACAO_PROCS_ESQ = ['Exodontia', 'Rest. Resina', 'Endodontia', 'Profilaxia', 'Periodontia', 'Radiografia'];
-const AVALIACAO_PROCS_DIR = ['Implante', 'P.P.R. c/grampo', 'P.P.R. s/grampo', 'Prótese Total', 'Coroa ou Pivot', 'Bichectomia', 'Preenchimento', 'Toxina Botulínica'];
-
-let _avaliacaoAtual = null;
-let _avaliacaoPacienteId = null;
-
-function renderAvaliacao(pacienteId) {
-  _avaliacaoPacienteId = pacienteId;
-  const salvo = DB.get('avaliacoes', []).find(a => String(a.id) === String(pacienteId));
-  _avaliacaoAtual = salvo ? JSON.parse(JSON.stringify(salvo)) : { id: pacienteId, itens: {}, obs: '' };
-
-  const colEsq = document.getElementById('avaliacao-col-esq');
-  const colDir = document.getElementById('avaliacao-col-dir');
-  if (colEsq) colEsq.innerHTML = AVALIACAO_PROCS_ESQ.map(avaliacaoLinha).join('');
-  if (colDir) colDir.innerHTML = AVALIACAO_PROCS_DIR.map(avaliacaoLinha).join('');
-  const obsEl = document.getElementById('avaliacao-obs');
-  if (obsEl) obsEl.value = _avaliacaoAtual.obs || '';
-  atualizarAvaliacaoTotal();
-}
-
-function avaliacaoLinha(nome) {
-  const d = (_avaliacaoAtual.itens && _avaliacaoAtual.itens[nome]) || {};
-  const nomeAttr = nome.replace(/'/g, "\\'");
-  return `<div style="display:grid;grid-template-columns:1fr 54px 84px;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
-    <div style="color:var(--tx-2)">${nome}</div>
-    <input type="number" min="0" value="${d.quant || ''}" placeholder="Qtd" style="width:100%;padding:4px 5px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11.5px;text-align:center" oninput="atualizarAvaliacaoItem('${nomeAttr}','quant',this.value)">
-    <input type="number" min="0" step="0.01" value="${d.valor || ''}" placeholder="R$ 0,00" style="width:100%;padding:4px 5px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:11.5px;text-align:right" oninput="atualizarAvaliacaoItem('${nomeAttr}','valor',this.value)">
-  </div>`;
-}
-
-function atualizarAvaliacaoItem(nome, campo, valor) {
-  if (!_avaliacaoAtual) return;
-  if (!_avaliacaoAtual.itens) _avaliacaoAtual.itens = {};
-  if (!_avaliacaoAtual.itens[nome]) _avaliacaoAtual.itens[nome] = {};
-  _avaliacaoAtual.itens[nome][campo] = campo === 'quant' ? (parseInt(valor) || 0) : (parseFloat(valor) || 0);
-  atualizarAvaliacaoTotal();
-}
-
-function atualizarAvaliacaoTotal() {
-  const el = document.getElementById('avaliacao-total');
-  if (!el || !_avaliacaoAtual) return;
-  const total = Object.values(_avaliacaoAtual.itens || {}).reduce((s, i) => s + (Number(i.valor) || 0), 0);
-  el.textContent = fmtMoney(total);
-}
-
-function salvarAvaliacao() {
-  if (!_avaliacaoAtual || !_avaliacaoPacienteId) return;
-  _avaliacaoAtual.obs = sanitizarTexto(document.getElementById('avaliacao-obs').value.trim());
-  _avaliacaoAtual.updated = new Date().toISOString();
-  DB.setOne('avaliacoes', _avaliacaoPacienteId, _avaliacaoAtual);
-  alert('Avaliação salva!');
-}
-
-function gerarAvaliacaoPDF(pacienteId) {
-  if (!_avaliacaoAtual) return;
-  const p = DB.get('pacientes', []).find(p => String(p.id) === String(pacienteId));
-  const cfg = DB.get('config', {});
-  const itensPreenchidos = Object.entries(_avaliacaoAtual.itens || {}).filter(([, d]) => (d.quant || d.valor));
-  if (itensPreenchidos.length === 0) { alert('Preencha ao menos um procedimento antes de gerar o PDF.'); return; }
-
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 20;
-  let y = 20;
-
-  doc.setFillColor(15, 17, 23);
-  doc.rect(0, 0, 210, 35, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-  doc.text(cfg.nome_clinica || 'Clínica Odontológica', margin, 15);
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.setTextColor(180, 180, 180);
-  if (cfg.nome_dentista) doc.text('Dr(a). ' + cfg.nome_dentista + (cfg.cro ? ' · CRO: ' + cfg.cro : ''), margin, 22);
-  if (cfg.telefone) doc.text('Tel: ' + cfg.telefone, 210 - margin, 22, { align: 'right' });
-
-  y = 50;
-  doc.setTextColor(99, 102, 241);
-  doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-  doc.text('AVALIAÇÃO / ORÇAMENTO', 105, y, { align: 'center' });
-  y += 8;
-  doc.setDrawColor(99, 102, 241);
-  doc.line(margin, y, 210 - margin, y);
-  y += 10;
-
-  doc.setTextColor(30, 30, 30);
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('PACIENTE', margin, y); y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.text('Nome: ' + (p?.nome || '–'), margin, y); y += 5;
-  if (p?.cpf) { doc.text('CPF: ' + p.cpf, margin, y); y += 5; }
-  doc.text('Data: ' + new Date().toLocaleDateString('pt-BR'), 210 - margin, y - (p?.cpf ? 5 : 0), { align: 'right' });
-  y += 8;
-
-  doc.setDrawColor(220, 220, 220);
-  doc.line(margin, y, 210 - margin, y); y += 10;
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-  doc.text('PROCEDIMENTO', margin, y);
-  doc.text('QTD', margin + 110, y);
-  doc.text('VALOR', 210 - margin, y, { align: 'right' });
-  y += 5;
-  doc.setDrawColor(230, 230, 230); doc.line(margin, y, 210 - margin, y); y += 6;
-
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-  let total = 0;
-  itensPreenchidos.forEach(([nome, d]) => {
-    doc.text(nome, margin, y);
-    doc.text(String(d.quant || '–'), margin + 110, y);
-    doc.text(fmtMoney(d.valor || 0), 210 - margin, y, { align: 'right' });
-    total += Number(d.valor) || 0;
-    y += 6;
-  });
-
-  y += 4;
-  doc.setDrawColor(220, 220, 220); doc.line(margin, y, 210 - margin, y); y += 8;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-  doc.text('TOTAL:', margin, y);
-  doc.setTextColor(99, 102, 241);
-  doc.text(fmtMoney(total), 210 - margin, y, { align: 'right' });
-  doc.setTextColor(30, 30, 30);
-  y += 12;
-
-  if (_avaliacaoAtual.obs && _avaliacaoAtual.obs.trim()) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.text('OBSERVAÇÕES', margin, y); y += 6;
-    doc.setFont('helvetica', 'normal');
-    const linhas = doc.splitTextToSize(_avaliacaoAtual.obs, 170);
-    doc.text(linhas, margin, y); y += linhas.length * 5 + 6;
-  }
-
-  y = Math.max(y + 15, 250);
-  doc.setDrawColor(150, 150, 150);
-  doc.line(margin, y, 100, y);
-  y += 5;
-  doc.setFontSize(9);
-  doc.text('Declaro estar ciente e de acordo com o tratamento proposto nesta avaliação.', margin, y);
-
-  doc.save('Avaliacao_' + (p?.nome || 'Paciente').replace(/\s+/g, '_') + '_' + getLocalDateString() + '.pdf');
-}
-// ════════════════════════════════════════
 
 // ════════════════════════════════════════
 // PERMISSÕES E SIDEBAR DINÂMICA
@@ -5312,24 +5213,6 @@ function viewPerfil(id) {
       </div>
     </div>
     <div class="card" style="margin-top:16px">
-      <div class="card-title">Avaliação / Orçamento</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
-        <div id="avaliacao-col-esq"></div>
-        <div id="avaliacao-col-dir" style="border-left:1px solid var(--border)"></div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        <div style="font-size:13px;font-weight:700;color:var(--tx-2)">Total: <span id="avaliacao-total" style="color:var(--indigo);font-size:17px">R$ 0,00</span></div>
-      </div>
-      <div class="field" style="margin-top:14px">
-        <label>Observações</label>
-        <textarea id="avaliacao-obs" placeholder="Anotações do orçamento..."></textarea>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
-        <button class="btn btn-ghost btn-sm" onclick="gerarAvaliacaoPDF('${p.id}')">📄 Gerar PDF</button>
-        <button class="btn btn-teal btn-sm" onclick="salvarAvaliacao()">Salvar Avaliação</button>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div class="card-title" style="margin-bottom:0">Plano de Tratamento</div>
         <button class="btn btn-ghost btn-sm" onclick="gerarPlanoTratamentoPDF('${p.id}')">📄 Gerar PDF</button>
@@ -5350,7 +5233,6 @@ function viewPerfil(id) {
 
   renderDocGallery('perfil-doc-gallery', id, null);
   renderOdontograma(id, 'adulto');
-  renderAvaliacao(id);
   renderPlanoTratamento(id);
   navigate('perfil');
 }
